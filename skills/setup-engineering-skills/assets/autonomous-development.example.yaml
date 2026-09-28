@@ -1,9 +1,14 @@
 # Optional. List local reviewers in execution order.
-# Built-ins: agentic-review, coderabbit. Other identifiers need a procedure
-# in the consuming repository's instructions.
+# Built-ins: agentic-review, coderabbit, open-code-review. Other identifiers
+# need a procedure in the consuming repository's instructions.
 # local_reviewers:
 #   - agentic-review
 #   - coderabbit
+#   - open-code-review
+# Optional. Applies when open-code-review is in local_reviewers.
+# Open Code Review must be installed separately by the consuming project.
+# open_code_review:
+#   mode: managed # or delegation
 
 # Optional. Set this only to an existing repository label.
 merge_label: "CHANGE_ME"

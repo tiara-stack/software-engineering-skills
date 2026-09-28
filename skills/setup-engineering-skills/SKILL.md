@@ -51,10 +51,14 @@ of this flow.
    exactly. If the runtime cannot verify a supported value, ask the user for
    it instead of guessing. For autonomous development, resolve local reviewer
    selection and order from repository config and instructions. Ask only when
-   they are unclear. The built-ins are `agentic-review` and `coderabbit`; a
-   custom reviewer needs a documented procedure. Add `agentic-review` only
-   when selected and its reviewer profiles are configured. If no local
-   reviewer is selected, omit `local_reviewers`.
+   they are unclear. The built-ins are `agentic-review`, `coderabbit`, and
+   `open-code-review`; a custom reviewer needs a documented procedure. Add
+   `agentic-review` only when selected and its reviewer profiles are
+   configured. Open Code Review requires a separately installed `ocr` CLI.
+   Its optional `open_code_review.mode` is `managed` or `delegation`, with
+   `managed` as the default. When ticket coordination is selected too, include
+   each selected local reviewer in a local quota pool. If no local reviewer
+   is selected, omit `local_reviewers`.
    Migrate a legacy `agentic_review: true` setting to the ordered list
    `[agentic-review, coderabbit]`. A legacy false value maps to `[coderabbit]`
    when repository evidence shows that local review was selected; otherwise

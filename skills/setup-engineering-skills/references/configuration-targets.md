@@ -8,8 +8,9 @@ Keep branch, commit, validation, review, CI, tracker, and submission conventions
 in the existing root instruction file or its linked docs.
 
 The optional `.agents/autonomous-development.yaml` can contain
-`local_reviewers` and `merge_label`. `local_reviewers` is an ordered list of
-reviewer identifiers. The built-ins are `agentic-review` and `coderabbit`.
+`local_reviewers`, `open_code_review`, and `merge_label`. `local_reviewers` is
+an ordered list of reviewer identifiers. The built-ins are `agentic-review`,
+`coderabbit`, and `open-code-review`.
 Other identifiers require repository instructions that describe the review
 invocation, review scope, completion signal, and failure handling. An absent
 list falls back to explicit repository review
@@ -17,6 +18,12 @@ instructions; tool installation alone does not select a reviewer. A present
 empty list selects no local reviewer. The `agentic-review` entry requires the
 installed skill and complete reviewer profiles. Set `merge_label` only to an
 existing repository label.
+
+`open-code-review` requires a separately installed Open Code Review `ocr`
+CLI. Its optional `open_code_review.mode` accepts `managed` or `delegation`
+and defaults to `managed`; it applies only when that reviewer is selected.
+When ticket coordination is configured, include each selected local reviewer
+in a local quota pool.
 
 The former `agentic_review: true` setting selected Agentic Review before
 CodeRabbit. Migrate it to `local_reviewers: [agentic-review, coderabbit]`.

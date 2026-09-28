@@ -68,7 +68,24 @@ local_reviewers:
 merge_label: "ready-for-merge"
 ```
 
-The built-in reviewer identifiers are `agentic-review` and `coderabbit`.
+The built-in reviewer identifiers are `agentic-review`, `coderabbit`, and
+`open-code-review`. Open Code Review requires the consuming project to install
+its [`ocr` CLI](https://github.com/alibaba/open-code-review) separately. Select
+it in `local_reviewers`, then set `open_code_review.mode` to `managed` or
+`delegation` if needed. The default is `managed`; delegation mode uses the host
+coding agent to review files selected by OCR and does not require an OCR model
+endpoint. The integration does not bundle Open Code Review's skills or
+plugins.
+
+For delegation mode, select the reviewer and set its mode explicitly:
+
+```yaml
+local_reviewers:
+  - open-code-review
+open_code_review:
+  mode: delegation
+```
+
 Document any other review procedure in the consuming repository. Without a
 selected local reviewer, `implement` skips local review and the explicit
 `local-review-loop` route stops with a configuration blocker. The retired

@@ -61,11 +61,11 @@ apply the merge label or mark the issue complete.
 Read [Configuration](references/configuration.md) during intake. Select local
 reviewers from the user's request, `.agents/autonomous-development.yaml`, or
 explicit repository instructions. The `local_reviewers` list sets reviewer
-order. Its built-in identifiers are `agentic-review` and `coderabbit`. A
-repository can define other reviewer identifiers and their procedures in its
-own instructions. A custom procedure must state how to invoke the reviewer,
-which changes it covers, and how to recognize success or failure. Tool
-installation alone does not select a reviewer.
+order. Its built-in identifiers are `agentic-review`, `coderabbit`, and
+`open-code-review`. A repository can define other reviewer identifiers and
+their procedures in its own instructions. A custom procedure must state how
+to invoke the reviewer, which changes it covers, and how to recognize success
+or failure. Tool installation alone does not select a reviewer.
 
 Keep local reviewers separate from hosted pull request reviewers. The
 `local_reviewers` list does not configure hosted review. Resolve hosted review
@@ -139,8 +139,10 @@ grant.
    and complete its required preflight. For `agentic-review`, follow
    [Agentic Review integration](references/agentic-review.md). Report missing
    or invalid procedures, tools, permissions, or profiles and stop before
-   claiming the issue or changing the repository. In coordinated routes,
-   defer this preflight until the coordinator grants a review phase.
+   claiming the issue or changing the repository. For `open-code-review`,
+   follow [Open Code Review integration](references/open-code-review.md). In
+   coordinated routes, defer this preflight until the coordinator grants a
+   review phase.
 9. Immediately before the first repository mutation, claim a supplied issue
    only if its tracker convention defines that operation. Record its original
    assignee. Leave an issue owned by another person untouched. If a later
@@ -187,6 +189,8 @@ request until the coordinator assigns a stack position.
 Read [Commit and submit](references/commit-and-submit.md) while implementing.
 Read [CodeRabbit review procedure](references/coderabbit-review.md) only when
 `coderabbit` is selected as a local reviewer.
+Read [Open Code Review integration](references/open-code-review.md) only when
+`open-code-review` is selected as a local reviewer.
 
 ## Check CI and pull request review
 

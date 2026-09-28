@@ -12,16 +12,29 @@ reviewers and carry the merge-readiness label:
 local_reviewers:
   - agentic-review
   - coderabbit
+  - open-code-review
+# Optional. Applies when open-code-review is in local_reviewers.
+open_code_review:
+  mode: delegation # managed (default) or delegation
 merge_label: "ready-for-merge"
 ```
 
 `local_reviewers` is an ordered YAML sequence. Its built-in identifiers are
-`agentic-review` and `coderabbit`. A repository can use another identifier
-when its own instructions define that review procedure. When the key is
-present, it is authoritative, including an empty list, unless the user selects
-a different reviewer for the current run. When it is absent, follow explicit
-repository instructions to select and order local reviewers. Tool installation
-alone does not select a reviewer.
+`agentic-review`, `coderabbit`, and `open-code-review`. A repository can use
+another identifier when its own instructions define that review procedure.
+When the key is present, it is authoritative, including an empty list, unless
+the user selects a different reviewer for the current run. When it is absent,
+follow explicit repository instructions to select and order local reviewers.
+Tool installation alone does not select a reviewer.
+
+`open_code_review.mode` accepts `managed` or `delegation` and applies only when
+`open-code-review` is selected. It defaults to `managed`. Managed mode uses
+the model configured for Open Code Review. Delegation mode has Open Code Review
+select files and rules while the host coding agent performs the review; it
+does not need an Open Code Review model endpoint. Both modes require the
+separately installed `ocr` CLI. See [Open Code Review integration](open-code-review.md)
+for installation, preflight, review scope, and completion rules. When this
+reviewer is selected, an invalid mode blocks review before repository changes.
 
 `agentic_review` is retired. If it appears in project config, stop before
 mutation and migrate the project to `local_reviewers`. The previous
