@@ -1,0 +1,7 @@
+interface:
+  display_name: "Autonomous Development"
+  short_description: "Run configured or coordinator-delegated development steps"
+  default_prompt: "Use $autonomous-development to implement a feature, run local review, or run a selected pull request gate."
+
+policy:
+  allow_implicit_invocation: false

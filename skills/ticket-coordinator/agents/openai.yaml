@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ticket Coordinator"
+  short_description: "Coordinate an approved ticket batch"
+  default_prompt: "Use $ticket-coordinator to implement these approved tickets as a coordinated batch."
+
+policy:
+  allow_implicit_invocation: false

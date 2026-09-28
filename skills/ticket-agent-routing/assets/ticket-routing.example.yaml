@@ -1,0 +1,24 @@
+# Copy this file to .agents/ticket-routing.yaml and replace every CHANGE_ME.
+version: 1
+
+levels:
+  quick:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  focused:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  standard:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  complex:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  architectural:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"

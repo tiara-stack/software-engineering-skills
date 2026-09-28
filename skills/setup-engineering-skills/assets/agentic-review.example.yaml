@@ -1,0 +1,20 @@
+# Copy to .agents/agentic-review.yaml and replace every CHANGE_ME.
+version: 1
+
+reviewers:
+  correctness_reliability:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  security_privacy:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  maintainability_tests:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"
+  spec_conformance:
+    coding_agent: "CHANGE_ME"
+    model: "CHANGE_ME"
+    reasoning_effort: "CHANGE_ME"

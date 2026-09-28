@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agentic Review"
+  short_description: "Run an incremental, configured multi-agent review"
+  default_prompt: "Use $agentic-review to review the changes since the last completed checkpoint."

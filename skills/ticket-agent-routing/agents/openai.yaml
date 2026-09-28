@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ticket Agent Routing"
+  short_description: "Recommend agents for approved tickets"
+  default_prompt: "Use $ticket-agent-routing to add this project's configured agent recommendations to an approved ticket set."
+
+policy:
+  allow_implicit_invocation: false

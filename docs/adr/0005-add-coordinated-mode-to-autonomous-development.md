@@ -1,0 +1,3 @@
+# Add coordinated mode to autonomous-development
+
+Autonomous-development needs explicit handoffs for coordinator use. A worker pauses after implementation so the coordinator can assign stack order; the worker rebases and resolves conflicts, then resumes local and hosted review and stops before the merge label. When Matt Pocock's `$implement` is installed, the worker follows its implementation, regular typecheck and focused-test, TDD, and commit guidance, then defers its final full-suite run and `/code-review` until after stack admission and quota grants. This keeps parallel implementation compatible with quota scheduling and coordinator-controlled merge-queue admission.

@@ -1,0 +1,9 @@
+# Optional. List local reviewers in execution order.
+# Built-ins: agentic-review, coderabbit. Other identifiers need a procedure
+# in the consuming repository's instructions.
+# local_reviewers:
+#   - agentic-review
+#   - coderabbit
+
+# Optional. Set this only to an existing repository label.
+merge_label: "CHANGE_ME"

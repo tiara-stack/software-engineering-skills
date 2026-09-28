@@ -1,0 +1,23 @@
+version: 1
+worker_backend: CHANGE_ME # subagent or t3code-mcp
+max_workers: 2
+stack_backend: CHANGE_ME # github-native or graphite, as configured by the consuming project
+review_pools:
+  local-review:
+    scope: local
+    reviewers:
+      - CHANGE_ME
+    max_active: 1
+    # Optional when the service publishes a usable rolling-window limit.
+    # rolling_window:
+    #   max_invocations: CHANGE_ME
+    #   window_seconds: CHANGE_ME
+  hosted-review:
+    scope: hosted
+    reviewers:
+      - CHANGE_ME
+    max_active: 1
+    # Optional when the service publishes a usable rolling-window limit.
+    # rolling_window:
+    #   max_invocations: CHANGE_ME
+    #   window_seconds: CHANGE_ME
