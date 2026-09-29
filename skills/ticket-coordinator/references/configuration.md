@@ -10,7 +10,7 @@ Use the copyable [coordinator config template](../assets/ticket-coordinator.exam
 
 ## Settings
 
-- `worker_backend` selects `subagent` or `t3code-mcp`. A per-run override takes precedence. Verify the selected backend before dispatch. If T3Code MCP is selected, require its worktree and thread-control operations to be available.
+- `worker_backend` selects `subagent` or `t3code-mcp`. A per-run override takes precedence. Verify the selected backend before dispatch. If T3Code MCP is selected, require worktree creation, full-access thread creation, thread submission, and thread observation; follow [T3Code MCP dispatch and handoff](worker-protocol.md#t3code-mcp-dispatch-and-handoff).
 - `max_workers` limits active implementation workers. Use 2 when omitted.
 - `stack_backend` selects the consuming project's branch and PR stack workflow. Respect repository instructions, installed tools, and the configured backend. Do not assume Graphite or GitHub native stacks from the skill repository.
 - Read `merge_label` from the consuming project's autonomous-development configuration. It must be an existing label that repository instructions identify as merge-queue admission. Never create or guess a label, and never substitute a direct merge.
