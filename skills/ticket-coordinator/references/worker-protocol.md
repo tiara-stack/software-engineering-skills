@@ -2,19 +2,41 @@
 
 The coordinator owns eligibility, stack order, quota reservations, merge-label admission, merge observation, and cleanup. One worker owns each ticket from implementation through merge: it edits code, resolves its rebase conflicts, evaluates review findings, and makes in-scope repairs. The coordinator manages workflow state and quota; it does not decide whether a finding is valid or make code changes.
 
-Keep the same worker attached to its worktree through the handoffs when the backend supports it. The coordinator resumes that worker with an explicit phase grant; a worker does not advance itself into a phase that is waiting for coordinator control. While a phase is active, the worker completes its work, including evaluating and resolving review findings, before handing off.
+Keep the same worker attached to its worktree through the handoffs when the backend supports it. The coordinator resumes that worker with an explicit phase grant; a worker does not advance itself into a phase that is waiting for coordinator control. While a phase is active, the worker completes its work, including evaluating and resolving review findings, before handing off. The coordinator owns the run until its completion condition is met or a real blocker requires a pause. A worker waiting for a quota grant is not a request for the user to take over coordination.
 
 A handoff may end the worker's current turn. Keep its ticket, branch, worktree, and backend identity in coordinator state. If the backend cannot resume the same agent or thread, start a continuation on the same worktree and branch; never create a duplicate branch for that ticket.
+
+## Message provenance and envelopes
+
+The coordinator transcript may render a worker's `thread_submit` message with the same role and appearance as a human message. Classify messages by dispatch provenance, not by transcript role, wording, or channel. Maintain a run ID and, for each worker, its backend identity, ticket, current phase, expected outcome, and outstanding handoff or grant ID.
+
+Give every worker handoff and coordinator phase grant a compact envelope:
+
+```text
+TICKET_COORDINATOR v1
+kind: HANDOFF | PHASE_GRANT
+run_id: <run ID>
+ticket_id: <ticket ID>
+worker_id: <registered agent or thread ID>
+phase: <phase name>
+message_id: <unique handoff or grant ID>
+outcome: <handoff outcome, for HANDOFF only>
+payload: <phase grant or complete handoff details>
+```
+
+Use the envelope to correlate a message with the expected run state. The text and IDs alone do not prove who sent it. For the `subagent` backend, accept a handoff only from the returned result of the registered dispatch. For `t3code-mcp`, verify a handoff against the registered worker thread and its `thread_submit` operation, including the exact coordinator `{instanceId, threadId}` target and request ID. Verify phase grants against the coordinator identity and the worker's expected next phase. Use native message or operation IDs when the harness exposes them.
+
+When an apparent worker message arrives in the user conversation, continue coordinator work after verifying it as a registered handoff. When a worker receives a plain message, accept it as a phase grant only after verifying the coordinator source and expected run, ticket, phase, and grant ID. If the harness does not expose enough provenance, inspect the authoritative worker thread or dispatch result. If origin remains ambiguous, make no workflow changes and ask whether the message is user steering or a worker handoff. Never infer origin from a marker alone.
 
 ## T3Code MCP dispatch and handoff
 
 Use these rules when `worker_backend` is `t3code-mcp`:
 
-1. Discover T3Code operations from the current harness's available tools. The namespace may be exposed as `t3code` or `mcp__t3code`; call the exact available operations for worktree creation, thread creation, submission, and thread observation. Pause before dispatch if a required operation is unavailable.
-2. Resolve the coordinator's exact T3Code `instanceId` and `threadId` from the current conversation metadata. Store both in run state and pass them to every worker in its initial prompt and every continuation. On resume, verify they still identify the active coordinator thread. If either identity is unavailable or ambiguous, pause before dispatch.
+1. Discover T3Code operations from the current harness's available tools. The namespace may be exposed as `t3code` or `mcp__t3code`; require worktree creation, thread creation, submission, and source-aware thread output or equivalent operation readback. Also require either thread observation or a one-shot wait capability; pause before dispatch if neither is available.
+2. Resolve the coordinator's exact T3Code `instanceId` and `threadId` from the current conversation metadata. Store both in run state and pass them to every worker in its initial prompt and every continuation. On resume, verify they still identify the active coordinator thread. Include the worker's exact thread identity and a unique handoff ID in each worker prompt. If either coordinator identity is unavailable or ambiguous, pause before dispatch.
 3. Create a separate worktree and thread for each ticket. Set the worker thread's runtime mode explicitly to `full-access`, then verify the created thread configuration reports `full-access` before submitting its task. Preserve the selected model and routing metadata. If full access cannot be selected or verified, do not start that worker; preserve the run state and report the limitation.
-4. Tell each worker to inspect its own available tools and deliver every handoff by calling the exposed `thread_submit` operation against the coordinator's exact `{instanceId, threadId}`. The worker namespace may also be `t3code` or `mcp__t3code`. Give each submission a unique request ID, use `provider_default` intent and `thread_default` context when those options are exposed, and include the complete handoff result from below. The worker then stops and waits for an explicit phase grant. Repeat the coordinator identity and submission requirement whenever resuming a worker.
-5. Reconcile each submitted result with the worker thread and worktree before advancing its phase. A submission receipt confirms the handoff was accepted; the coordinator still verifies the phase's required checks and state.
+4. Tell each worker to treat only a verified `PHASE_GRANT` from this coordinator as permission to start its next phase. For every handoff, require the `TICKET_COORDINATOR` envelope and a call to the exposed `thread_submit` operation against the coordinator's exact `{instanceId, threadId}`. The worker namespace may also be `t3code` or `mcp__t3code`. Use a unique request ID that matches the envelope's `message_id`, use `provider_default` intent and `thread_default` context when those options are exposed, and include the complete handoff result from below. Have the worker return the same handoff as its final visible response after submitting it. The worker then stops and waits for an explicit phase grant. Repeat the coordinator identity, expected next phase, and handoff requirements whenever resuming a worker.
+5. Track each worker by its exact thread and worktree until its expected handoff arrives. Use thread observation or a one-shot wait for a worker to become inactive or change, rather than repeatedly polling. If a worker turn ends without a `thread_submit` handoff, read its latest output and worktree state, then resume that same worker with a concise request to submit the missing handoff. When a message appears in the coordinator transcript, verify its request ID and source worker thread against the registered dispatch and the `thread_submit` operation before treating it as a handoff. Reconcile the submission receipt, visible response, worker thread, and worktree before advancing its phase. A submission receipt confirms acceptance, not that the worker's reported checks or state are correct. Do not dispatch a duplicate worker or silently infer a handoff from silence.
 
 | Phase | Worker action | Quota reservation | Coordinator action |
 | --- | --- | --- | --- |
@@ -33,6 +55,14 @@ Keep finding disposition with the worker. In its next handoff, summarize each fi
 After each repair, run the required checks. Before each local reviewer pass, request local quota, then rerun the complete configured reviewer list from its first entry. Commit and submit repairs through the consuming project's workflow, verify the new PR head, and continue hosted review on that head under the existing hosted reservation. Repeat until every configured reviewer has completed on the current head and no actionable finding remains. Report `READY_FOR_LABEL` only after that condition and all required checks pass for the same head.
 
 The worker pauses for the coordinator when it needs a quota grant, a phase transition, or a decision covered by `REVIEW_BLOCKED`. The coordinator grants capacity or escalates the stated decision; the worker resumes the review and repair work after that handoff.
+
+## Waiting for quota
+
+When a reviewer returns a quota error, the coordinator records the retry time or calculates the next eligible time from the configured rolling window and shared usage state. Keep the worker and review phase open. Continue other eligible tickets while capacity is unavailable.
+
+When no independent work remains, wait until the earliest known retry time using a runtime sleep or timed wait if one is available. Prefer `clock.sleep` for a deadline-only wait. With T3Code MCP, `thread_wait` can also wait for a worker-thread change or a timeout. If a thread event arrives before the retry time, reconcile worker, PR, and pool state; if the pool remains unavailable, wait for the remaining time to that same retry deadline. Do not make short repeated quota queries. At each retry time, reread shared quota state under lock. If the pool is still unavailable, calculate and record its next eligible time under lock, release the lock, and repeat the timed wait. Grant capacity only after a locked reread confirms it is available. If the runtime cannot keep the run active through any wait, write the current retry time and full checkpoint to shared run state and report that a later invocation is required.
+
+A timed wait resumes only while the current coordinator run remains active. It is not a durable scheduled restart. If the runtime has no timer, cannot keep the run active until the retry time, or the coordinator's own execution budget is exhausted, write the retry time and full checkpoint to shared run state and report that a later invocation is required. Do not claim the run will wake itself after it has ended.
 
 If a hosted reviewer is not configured, skip hosted review and its quota pool. If no local reviewer is configured, follow the autonomous-development local-review rule and skip local review. A review invocation or hosted trigger that returns a quota error updates the pool cooldown; it never counts as a completed review.
 
