@@ -13,6 +13,9 @@ A skill the consuming project intends to use and wants configured. Installation 
 **Coordinator**:
 The agent that schedules ticket workers, controls review capacity and stack admission, observes PR merges, and removes merged worktrees without editing source code.
 
+**Ticket worker**:
+An agent assigned one work ticket that owns its implementation, stack rebase conflicts, and review repairs until its PR is ready for merge-label admission.
+
 **Coordinator run**:
 A resumable orchestration of one approved spec and its ticket set. On resume, the coordinator reconciles tracker, PR stack, and worktree state before acting.
 

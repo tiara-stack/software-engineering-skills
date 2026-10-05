@@ -53,9 +53,11 @@ The default path is `.agents/ticket-routing.yaml`. Use version `1` and define al
 ## Ticket coordination
 
 The default path is `.agents/ticket-coordinator.yaml`. Use version `1` and
-select `worker_backend` as `subagent` or `t3code-mcp`. `max_workers` defaults
-to 2. Set `stack_backend` to the consuming project's configured stack tool, or
-omit it only when root instructions identify exactly one supported tool.
+select `worker_backend` as `subagent`, `t3code-mcp`, or
+`t3code-orchestrator-v2`. See the [T3Code Orchestrator V2 protocol](../../ticket-coordinator/references/t3code-orchestrator-v2.md)
+for its complete pre-dispatch checks. `max_workers` defaults to 2. Set
+`stack_backend` to the consuming project's configured stack tool, or omit it
+only when root instructions identify exactly one supported tool.
 
 Define `review_pools` separately for local and hosted reviewers. Each pool
 lists its reviewer identifiers and may set `max_active` (default 1) plus an

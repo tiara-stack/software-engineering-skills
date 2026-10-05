@@ -68,8 +68,10 @@ of this flow.
    confirms it. If labels cannot be inspected, ask the user for the exact
    existing value.
 
-   For ticket coordination, ask for the worker backend unless instructions
-   already select one. Default `max_workers` to 2. Use a configured stack tool;
+   For ticket coordination, ask for `worker_backend` unless instructions
+   already select one. Use the values and Orchestrator V2 capability gate in
+   [Ticket coordination configuration targets](references/configuration-targets.md#ticket-coordination).
+   Default `max_workers` to 2. Use a configured stack tool;
    infer one from root instructions only when exactly one supported tool is
    named. Configure separate local and hosted quota pools by service/account.
    When Matt Pocock's `$implement` is installed, include its `/code-review`
