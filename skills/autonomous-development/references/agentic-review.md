@@ -20,6 +20,7 @@ code edits, issue claims, or branch changes.
    Later runs use its latest completed checkpoint for the worktree and branch.
 2. Verify each reported finding against the current code. The parent workflow
    owns repairs, validation, and commits.
-3. After every repair, restart the complete local reviewer list from its first
-   entry. Keep the route open when Agentic Review is incomplete or a valid
-   finding has no safe repair.
+3. After a repair, rerun affected coverage and unresolved finding checks. Use
+   [incremental review](incremental-review.md) to carry unchanged coverage
+   only with matching source/rule identity and scope evidence. Keep the route
+   open when review is incomplete or a valid finding has no safe repair.

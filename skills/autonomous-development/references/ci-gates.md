@@ -34,9 +34,11 @@ head-validation blocker and do not call the older result green.
    every task-owned conflict by following
    [Conflict resolution](conflict-resolution.md). After resolving it, continue
    through the repair and resubmission steps below.
-4. Run the configured local reviewer list from its first entry after every
-   repair. If no local reviewer is selected, skip local review. Commit the
-   repair, submit a new head, and poll that head from the start.
+4. Run focused checks and affected review coverage after repair. Follow
+   [incremental review](incremental-review.md). If no local reviewer is
+   selected, skip local review. Commit the repair, submit a new head, and poll
+   that head from the start. Final readiness still requires every configured
+   reviewer on the final source/head.
 
 Keep repairs and repository decisions with the main agent. A polling helper may
 report check states, but it does not diagnose, edit, commit, submit, undraft,

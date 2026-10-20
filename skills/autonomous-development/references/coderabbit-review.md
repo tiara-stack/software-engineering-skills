@@ -13,10 +13,10 @@ coderabbit review --agent --base "$BASE" --include-untracked
 
 Review every finding against the current code. Fix concrete correctness,
 security, reliability, test, or maintainability defects in scope. Make a
-preference change when it has clear value and low risk. After every repair,
-follow the main workflow's rule to restart the complete local reviewer list
-from its first entry. A prior finding is cleared only when it no longer
-applies.
+preference change when it has clear value and low risk. After repair, follow
+[incremental review](incremental-review.md) for affected coverage and carry
+decisions. A prior finding is cleared only when it no longer applies. Final
+readiness still requires every configured reviewer on the final source/head.
 
 ## Retry quota responses
 

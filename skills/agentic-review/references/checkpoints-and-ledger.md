@@ -19,7 +19,7 @@ latest_ref="refs/agentic-review/latest/$worktree_key/$branch_key"
 previous_completed_checkpoint=$(git rev-parse --verify "$latest_ref^{commit}" 2>/dev/null || true)
 ```
 
-The latest ref points to the last completed checkpoint. Preserve every checkpoint under `refs/agentic-review/checkpoints/<worktree-key>/<branch-key>/<run-id>`. Keep one run report at `$state_dir/runs/<run-id>.md`; include its base, checkpoint, coverage, findings, prior-finding statuses, and unresolved findings to carry forward. The latest completed checkpoint commit message contains the run ID, which identifies its report. Keep checkpoint and report history unless the developer asks to prune it. Run only one review at a time for the same worktree and branch. Keep refs and reports local; do not push them.
+The latest ref points to the last completed checkpoint. Preserve every checkpoint under `refs/agentic-review/checkpoints/<worktree-key>/<branch-key>/<run-id>`. Keep one run report at `$state_dir/runs/<run-id>.md`; include its base, checkpoint, coverage, findings, prior-finding statuses, and unresolved findings to carry forward. For each coverage item, record reviewer and model, covered paths or behavior category, source identity, specification identity, generated-input identity, rule/configuration identity, and carry decision with scope evidence. Source identity names the relevant commits or content hashes for reviewed code and dependencies. Specification identity names the approved requirement source and a commit or content hash of the exact text supplied to the reviewer. Generated-input identity names the generator and version, relevant configuration and input identities, and generated output identity when generated artifacts affect the review. Rule identity names the applicable instruction and review configuration versions. Do not hash unrelated refs or native review checkpoints as product source. The latest completed checkpoint commit message contains the run ID, which identifies its report. Keep checkpoint and report history unless the developer asks to prune it. Run only one review at a time for the same worktree and branch. Keep refs and reports local; do not push them.
 
 ## Select the base
 
@@ -34,7 +34,15 @@ else
 fi
 ```
 
-Compute one diff from the selected base to the new checkpoint. Use that same range for every reviewer. If there is no `HEAD` and no caller base, create an empty tree with `git hash-object -t tree -w --stdin </dev/null` and use it as the base. If the diff is empty but prior unresolved findings exist, dispatch their assigned reviewers to recheck them. If both the diff and unresolved findings are empty, save a no-changes report and complete the checkpoint without dispatching reviewers.
+Compute one diff from the selected base to the new checkpoint. Use that range for every dispatched reviewer. Compare source, specification, generated-input, and rule identities with the prior report, including when the Git diff is empty. Reuse coverage only for named unchanged scope whose identities still match. Changes to shared analysis, configuration, approved requirements, dependencies, generator inputs, or generated outputs invalidate coverage they can affect. When affected scope is unclear, dispatch review again. If there is no `HEAD` and no caller base, create an empty tree with `git hash-object -t tree -w --stdin </dev/null` and use it as the base. Recheck every unresolved finding with its assigned reviewer. Save a no-changes report only when the diff and unresolved findings are empty and all carried coverage has matching identities and scope evidence. If an identity changes, invalidate affected coverage and dispatch its assigned reviewers even when the Git diff is empty.
+
+When a generated-input identity changes but the Git diff is empty, give the
+assigned reviewers the changed input or a safe, reviewable representation,
+its identity and provenance, and the affected current source scope. Include
+scope evidence that links the input to those source paths or behavior
+categories. Record this payload and coverage in the report. Keep the spec
+reviewer's existing raw-requirements and implementation-diff payload
+unchanged.
 
 ## Capture a checkpoint without changing the user's index
 

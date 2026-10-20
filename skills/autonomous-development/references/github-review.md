@@ -47,9 +47,11 @@ the behavior it names instead of dismissing it by age alone.
   bodies without a reply endpoint, post a concise PR comment that names the
   review and finding.
 
-After any repair, restart the configured local reviewer list from its first
-entry. Then commit and submit the repair, and review the new head. Skip local
-review when neither the user nor the repository selected a local reviewer.
+After repair, run affected checks and review coverage under
+[incremental review](incremental-review.md). Then commit and submit the repair,
+and inspect hosted review on the new head. Skip local review when neither the
+user nor the repository selected a local reviewer. Final readiness requires
+every configured reviewer on the final source/head.
 Leave no actionable finding unanswered.
 
 The hosted-review gate stays open until CodeRabbit completes a review for the
