@@ -19,7 +19,17 @@ scope or product decisions, reviewer quota, and shared-resource scheduling.
    against independent inventories or semantics-preserving variants when
    available. Inspect shared analysis and consolidate inconsistent copies
    when the defect crosses them. A broad rewrite is not required.
-4. Run focused checks, then every required project check on the changed head.
+4. When related findings recur across repair rounds or expose interacting
+   lifecycle/state transitions, collect adjacent findings before the next
+   repair batch. Arrange one independent review of those transitions and a
+   failure-mode matrix. Include combinations that cross callers and failure
+   paths, such as interruption during a wait, partial writes, retry, cleanup,
+   and error-cause preservation. Map each relevant caller to the failure paths
+   it can reach, including shared state or cleanup paths. Test each distinct
+   behavior combination with an assertion that distinguishes it from nearby
+   failure behavior, not with a test that restates one patch. Skip this step
+   for an isolated finding with no evidence of wider churn.
+5. Run focused checks, then every required project check on the changed head.
    Capture command arguments, working directory, actual exit status, separate
    output streams, relevant source identity, and review records through one
    tested project capture path when available. Keep failed results as failed.
@@ -49,8 +59,15 @@ a remit to find systemic gaps with concrete counterexamples. The owning
 worker keeps edits and finding disposition. Do not use this review to bypass
 reviewer configuration, quota, or phase control.
 
-Incremental progress is not acceptance. Before readiness, run a complete final
-branch review with every configured reviewer on the exact final source/head,
-recheck all unresolved findings, and pass all required checks on that head.
+Incremental review applies during repair rounds. After each repair, validate
+affected behavior and review changed code, affected dependencies, and carried
+findings. Do not restart every reviewer after each repair when coverage remains
+valid. Before readiness, account for every configured reviewer on the final
+head. Each reviewer must cover changed and affected paths there; unchanged
+coverage may carry only under the source, rule, reviewer, model, and scope
+evidence above. Rerun missing or invalidated coverage, recheck all unresolved
+findings, and pass all required repository checks and CI on that head. When
+hosted review is configured, it must be accepted on the final head. Keep
+additional consuming-project gates intact.
 Report partial coverage as partial. See [agentic-review's coverage ledger](../../agentic-review/references/checkpoints-and-ledger.md)
 for source and rule identity records.

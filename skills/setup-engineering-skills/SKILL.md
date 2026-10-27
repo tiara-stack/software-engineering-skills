@@ -11,6 +11,19 @@ Configure only the workflows the user selects. This skill works without
 project docs as inputs when present; never invoke another setup skill as part
 of this flow.
 
+Skill source, installed files, and instructions already loaded in a live
+conversation update separately. After a source change merges, inspect and save
+local edits in each installed skill, then update its intended scope from the
+consuming project. Use `npx skills@1.7.4 update <skill-name> --project` for a
+project install, or add `--global` only when updating a global install. Verify
+the updated `SKILL.md` and referenced files, then reapply local customizations.
+For a copied install, merge the complete skill folder by hand while preserving
+those edits. Start a new conversation to load the update, or ask the active
+agent to reread the skill and its relevant references before continuing.
+
+Keep the CLI version pin at `1.7.4`, matching this repository's README. Change
+it in a reviewed source update.
+
 ## Setup
 
 1. **Select workflows.** Use any workflows named in the request. Otherwise,

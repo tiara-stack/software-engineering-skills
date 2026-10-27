@@ -18,19 +18,45 @@ whole repository.
 ## Install
 
 With the [skills installer](https://github.com/vercel-labs/skills), choose this
-repository and select the skill you want. To install one directly:
+repository and select the skill you want. This repository pins the CLI to
+`1.7.4`; update the pin in a reviewed pull request and keep the setup skill in
+sync. To install one directly:
 
 ```sh
-npx skills@latest add <owner>/<repo> --skill=autonomous-development
-npx skills@latest add <owner>/<repo> --skill=ticket-coordinator
-npx skills@latest add <owner>/<repo> --skill=agentic-review
-npx skills@latest add <owner>/<repo> --skill=ticket-agent-routing
-npx skills@latest add <owner>/<repo> --skill=setup-engineering-skills
+npx skills@1.7.4 add <owner>/<repo> --skill autonomous-development
+npx skills@1.7.4 add <owner>/<repo> --skill ticket-coordinator
+npx skills@1.7.4 add <owner>/<repo> --skill agentic-review
+npx skills@1.7.4 add <owner>/<repo> --skill ticket-agent-routing
+npx skills@1.7.4 add <owner>/<repo> --skill setup-engineering-skills
 ```
 
 You can also copy a skill folder into an agent's supported skills directory.
 Keep the whole folder together so relative links to its references continue to
 work.
+
+## Update an installed skill
+
+A merged change updates this repository's source. It does not update a
+consuming project's installed copy or instructions already loaded in an open
+agent conversation. After the change merges to `main`, inspect local edits in
+each installed skill, save any project-specific customization, then update
+each changed skill from the consuming project with
+`npx skills@1.7.4 update <skill-name> --project`. Use `--global` only when you
+intend to update the global copy. Run the project command once for each
+applicable skill: `autonomous-development`, `ticket-coordinator`,
+`agentic-review`, and `setup-engineering-skills`. The
+[installer's update instructions](https://www.skills.sh/docs/packs#update-a-pack)
+describe single-skill updates. Confirm the installed `SKILL.md` and referenced
+files contain the merged changes, then reapply local customization. For a
+copied install, compare the complete `skills/<skill-name>` folder with the
+installed folder and merge the source changes without dropping local edits.
+
+An active conversation may keep older instructions in context after the
+installed files change. Start a new conversation to load the updated copy, or
+explicitly ask the active agent to reread the updated skill and its relevant
+references before continuing. Treat source revision, installed files, and
+live conversation context as separate versions; a merge alone updates only
+the first.
 
 ## Project setup
 

@@ -84,19 +84,28 @@ pass. Routine failures need no new repair grant. Pause for a coordinator only
 at a phase transition, a real scope or product decision, unavailable required
 permissions, or reviewer quota scheduling.
 
+In a coordinated route, one phase grant authorizes work through that phase's
+named handoff. It includes ordinary in-scope repairs, tests and validation,
+evidence capture, commits, and required bookkeeping. The coordinator retains
+phase admission, shared review quota, scope and product decisions, and merge
+gates. A quota wait ends the current reviewer invocation; resume the same
+phase when capacity is granted.
+
 This repair authority covers routine reversible repository edits and checks
 within the assigned scope. It does not authorize deleting user data, sending
 private task data to an external service, or making another high-impact,
 irreversible change. Before such an action, obtain explicit human
 confirmation unless the user has already authorized that specific action.
-A phase grant covers only its named work.
+A phase grant covers its named phase, including the ordinary steps needed to
+reach its handoff.
 
 Between full review checkpoints, rerun reviewers only for changed code and
 coverage affected by the repair. Follow [incremental review](references/incremental-review.md)
 when coverage can be carried forward. A local review loop is complete only
-when each selected reviewer has completed a final pass on the unchanged final
-head without an unresolved actionable finding. A failed or incomplete review
-does not pass.
+when each selected reviewer has complete required coverage for the final
+head, including valid carry-forward for unchanged scope, and no unresolved
+actionable finding. Rerun changed or affected coverage. A failed or incomplete
+review does not pass.
 
 ## Intake and branch gate
 
