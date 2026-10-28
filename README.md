@@ -84,8 +84,10 @@ review aspect. Set the spec reviewer when an authoritative spec is available. Th
 stops before checkpointing if a required profile is missing or invalid.
 
 `autonomous-development` reads optional settings from
-`.agents/autonomous-development.yaml`. List local reviewers in execution order
-under `local_reviewers`:
+`.agents/autonomous-development.yaml`. List local reviewers in required
+prerequisite order under `local_reviewers`; independent reviews may overlap
+after their prerequisites when the consuming project's rules and quota allow
+it. See the skill's incremental review procedure:
 
 ```yaml
 local_reviewers:

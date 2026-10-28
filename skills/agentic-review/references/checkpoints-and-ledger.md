@@ -4,9 +4,10 @@ Use Git objects and refs for reviewed snapshots, and plain text files under the 
 
 ## Identify review state
 
-From the repository root, derive stable keys for the worktree and branch without using branch names as file paths:
+From the repository root, derive stable keys for the worktree and branch without using branch names as file paths. Run this block in Bash; it uses Bash dynamic file descriptors and the host's `flock` command. Keep this Bash process alive and run the remaining command blocks in it through report save and ref update, so the lock stays held.
 
-```sh
+```bash
+set -euo pipefail
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 git_dir=$(git rev-parse --absolute-git-dir)
@@ -15,11 +16,64 @@ branch=$(git branch --show-current)
 if test -z "$branch"; then branch=detached; fi
 branch_key=$(printf '%s' "$branch" | git hash-object --stdin)
 state_dir="$git_dir/agentic-review/$worktree_key/$branch_key"
+mkdir -p "$state_dir"
+lock_file="$state_dir/run.lock"
+exec {review_lock_fd}>"$lock_file"
+flock "$review_lock_fd" || exit 1
+run_reservation=
+temp_index=
+cleanup_review_run() {
+  test -z "$temp_index" || rm -f "$temp_index"
+  test -z "$run_reservation" || rm -f "$run_reservation"
+  flock -u "$review_lock_fd"
+}
+trap cleanup_review_run EXIT
 latest_ref="refs/agentic-review/latest/$worktree_key/$branch_key"
 previous_completed_checkpoint=$(git rev-parse --verify "$latest_ref^{commit}" 2>/dev/null || true)
 ```
 
-The latest ref points to the last completed checkpoint. Preserve every checkpoint under `refs/agentic-review/checkpoints/<worktree-key>/<branch-key>/<run-id>`. Keep one run report at `$state_dir/runs/<run-id>.md`; include its base, checkpoint, coverage, findings, prior-finding statuses, and unresolved findings to carry forward. For each coverage item, record reviewer and model, covered paths or behavior category, source identity, specification identity, generated-input identity, rule/configuration identity, and carry decision with scope evidence. Source identity names the relevant commits or content hashes for reviewed code and dependencies. Specification identity names the approved requirement source and a commit or content hash of the exact text supplied to the reviewer. Generated-input identity names the generator and version, relevant configuration and input identities, and generated output identity when generated artifacts affect the review. Rule identity names the applicable instruction and review configuration versions. Do not hash unrelated refs or native review checkpoints as product source. The latest completed checkpoint commit message contains the run ID, which identifies its report. Keep checkpoint and report history unless the developer asks to prune it. Run only one review at a time for the same worktree and branch. Keep refs and reports local; do not push them.
+Acquire the exclusive OS lock before reading `latest_ref` or
+`previous_completed_checkpoint`. `flock` acquires it atomically and releases it
+when the process exits, including after a crash. Keep the lock file; its
+presence does not mean the lock is held. Do not remove it based on age. If
+`flock` is unavailable, use an equivalent OS lock. If no safe lock primitive is
+available, serialize runs so only one starts for this worktree and branch.
+Hold the lock through checkpoint creation, reviewer completion, atomic report
+save, and the compare-and-swap update. This lock admits only one run for the
+same worktree and branch.
+
+The latest ref names the last completed checkpoint. Preserve every checkpoint
+under `refs/agentic-review/checkpoints/<worktree-key>/<branch-key>/<run-id>`.
+Keep one run report at `$state_dir/runs/<run-id>.md` with its base, checkpoint,
+coverage, findings, prior-finding statuses, and unresolved findings to carry
+forward. For each coverage item, record reviewer and model, covered paths or
+behavior category, source identity, specification identity, generated-input
+identity, rule/configuration identity, and carry decision with scope evidence.
+Source identity names the relevant commits or content hashes for reviewed code
+and dependencies. Specification identity names the approved requirement
+source and a commit or content hash of the exact text supplied to the reviewer.
+Generated-input identity names the generator and version, relevant
+configuration and input identities, and generated output identity when
+generated artifacts affect the review. Rule identity names the applicable
+instruction and review configuration versions. Do not hash unrelated refs or
+native review checkpoints as product source.
+
+For every reviewer invocation, record a unique task/invocation ID, pinned
+checkpoint, native result or result reference, assigned scope, reviewer and
+model, and IDs of prior findings assigned for recheck. If the backend provides
+no invocation ID, assign a unique ID within the run and mark the native ID
+unavailable. The run ID in the latest completed checkpoint's commit message
+identifies its report. Keep checkpoint and report history unless the developer
+asks to prune it. Keep refs and reports local; do not push them.
+
+Within one locked run, dispatch independent aspect reviewers concurrently
+against the same pinned checkpoint when their inputs and configured quota
+allow it. Keep each result separate by invocation ID, reviewer, model,
+assigned scope, and prior findings. The run coordinator alone combines results
+and writes the single report atomically after every required reviewer finishes.
+Concurrent aspect reviewers do not create competing checkpoints or reports,
+and must not update `latest_ref` themselves. If any reviewer fails, leave the
+report incomplete and `latest_ref` unchanged.
 
 ## Select the base
 
@@ -48,17 +102,37 @@ unchanged.
 
 Capture tracked files and unignored untracked files from the on-disk working tree. A separate temporary index leaves the real index, branch, and files untouched. Tracked files are captured even when ignored. Partial staging is represented as the current file contents, not as the partial index.
 
-```sh
+When `HEAD` exists, seed the temporary index from it. Without `HEAD`, copy the real index when one exists so force-staged ignored files survive. Use an empty index only when both `HEAD` and the real index are absent. A caller-supplied base is the comparison baseline, not the capture seed.
+
+```bash
 head=$(git rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)
 temp_index=$(mktemp)
-trap 'rm -f "$temp_index"' EXIT
+real_index=$(git rev-parse --git-path index)
 
 if test -n "$head"; then
   GIT_INDEX_FILE="$temp_index" git read-tree "$head"
+elif test -f "$real_index"; then
+  cp "$real_index" "$temp_index"
+else
+  GIT_INDEX_FILE="$temp_index" git read-tree --empty
 fi
 GIT_INDEX_FILE="$temp_index" git add -A -- .
 tree=$(GIT_INDEX_FILE="$temp_index" git write-tree)
-run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+run_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+run_attempt=0
+while :; do
+  run_reservation=$(mktemp "$state_dir/run-$run_stamp-$run_attempt-XXXXXXXX") || exit 1
+  run_id=${run_reservation##*/}
+  checkpoint_ref="refs/agentic-review/checkpoints/$worktree_key/$branch_key/$run_id"
+  report_path="$state_dir/runs/$run_id.md"
+  if git show-ref --verify --quiet "$checkpoint_ref" || test -e "$report_path"; then
+    rm -f "$run_reservation"
+    run_reservation=
+    run_attempt=$((run_attempt + 1))
+  else
+    break
+  fi
+done
 
 if test -n "$head"; then
   checkpoint=$(GIT_AUTHOR_NAME='Agentic Review' \
@@ -74,9 +148,13 @@ else
     git commit-tree "$tree" -m "agentic-review checkpoint $run_id")
 fi
 
-checkpoint_ref="refs/agentic-review/checkpoints/$worktree_key/$branch_key/$run_id"
 git update-ref "$checkpoint_ref" "$checkpoint"
 ```
+
+`mktemp` atomically reserves each run ID under the lock. Before capture, the
+loop also checks that neither its checkpoint ref nor report path already
+exists. The exit handler removes the active reservation. If a process is
+killed before cleanup, the leftover file makes `mktemp` choose another name.
 
 Before capture, inspect `git status --short --untracked-files=all`, the diff from the selected base, and the contents of changed untracked files for credentials, private keys, tokens, or sensitive local data. Do not repeat possible secret values in tool output or reports. If one may be present, stop before checkpointing and report only the path.
 

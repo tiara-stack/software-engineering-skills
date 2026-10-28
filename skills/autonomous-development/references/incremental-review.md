@@ -20,20 +20,59 @@ scope or product decisions, reviewer quota, and shared-resource scheduling.
    available. Inspect shared analysis and consolidate inconsistent copies
    when the defect crosses them. A broad rewrite is not required.
 4. When related findings recur across repair rounds or expose interacting
-   lifecycle/state transitions, collect adjacent findings before the next
-   repair batch. Arrange one independent review of those transitions and a
-   failure-mode matrix. Include combinations that cross callers and failure
-   paths, such as interruption during a wait, partial writes, retry, cleanup,
-   and error-cause preservation. Map each relevant caller to the failure paths
-   it can reach, including shared state or cleanup paths. Test each distinct
-   behavior combination with an assertion that distinguishes it from nearby
-   failure behavior, not with a test that restates one patch. Skip this step
-   for an isolated finding with no evidence of wider churn.
-5. Run focused checks, then every required project check on the changed head.
+   lifecycle or deadline behavior, collect adjacent findings before another
+   narrow repair. Derive a finite behavior matrix from the approved contract
+   and actual callers. Map reachable caller/state combinations and observable
+   outcomes, including failure, interruption, retry, cleanup, reporting, and
+   ownership paths. For timing changes, cover fresh, resumed, legacy, expired,
+   and unknown state where reachable, plus delays during persistence,
+   acknowledgement, cleanup or report handoff, and reporting. Within one
+   attempt, a persisted absolute deadline cannot move later because a caller
+   reconstructs it from sampled remaining time. An explicitly authorized new
+   attempt may receive a new deadline under the approved contract. Test each
+   distinct reachable behavior with assertions that distinguish nearby
+   outcomes. Reuse a small helper when it clarifies the contract; do not add a
+   generic test framework or require a module rewrite. Keep this step
+   conditional on recurring related findings or interacting transitions.
+5. Read the consuming repository's scripts, dependency scope, and documented
+   allowances. Run affected-package checks and affected dependents, including
+   required type, configuration, format, lint, and build checks where the
+   project permits scoped validation. Respect command ordering. Record carried
+   and skipped scope. Broad configuration, schema, dependency, generated-input,
+   or uncertain-impact changes expand validation. Keep all required final
+   repository checks, CI, and hosted acceptance on the final source. Reuse
+   exact-source evidence and rerun only checks invalidated by a change.
    Capture command arguments, working directory, actual exit status, separate
    output streams, relevant source identity, and review records through one
    tested project capture path when available. Keep failed results as failed.
    Do not rerun an expensive successful command only to improve its report.
+
+## Schedule independent reviews
+
+Treat the configured reviewer list as an ordering of prerequisites. Run every
+required predecessor first. Once its prerequisites pass, independent
+read-only reviewers may review the same frozen source concurrently when the
+consuming project's ordering permits it and each configured quota pool has
+reserved capacity. Reconcile shared pool usage and reserve all required
+capacity before starting the batch. If a shared pool is unavailable, wait or
+run only reviewers whose separate pools have capacity; never skip a reviewer
+or exceed a pool.
+
+Pin each invocation to its exact source and checkpoint. Record its unique task
+or invocation ID, native result or result reference, assigned scope, selected
+reviewer and model, and IDs of prior findings assigned for recheck. Keep
+reviewer contexts isolated. Give each reviewer only its assigned input
+and its own unresolved prior findings. Use the generated-input exception in
+the reviewer contract for carried findings. Do not share one reviewer's
+findings with another reviewer's initial independent assessment. Collect the
+complete admitted batch before editing the source. If a later disposition
+creates an unresolved objection for a reviewer, use the existing follow-up
+review contract and record that invocation separately.
+
+After any repair, apply the same scheduling rule to the affected review
+coverage. Final readiness requires every mandatory reviewer to cover the
+final head, with carry-forward only for unchanged scope whose recorded
+identities and impact evidence still match.
 
 ## Carry review coverage
 
