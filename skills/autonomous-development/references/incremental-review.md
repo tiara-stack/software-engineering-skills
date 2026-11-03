@@ -6,6 +6,16 @@ reruns until the phase gates pass. Routine command or review failures do not
 need a new repair grant. The coordinator still controls phase transitions,
 scope or product decisions, reviewer quota, and shared-resource scheduling.
 
+Keep the approved acceptance contract stable through repair. Verify review
+claims against the code and that contract. Fix confirmed in-scope defects and
+fix a requirement violation only when the contract approves that requirement.
+Record evidence-based dispositions for optional preferences, unsupported
+claims, and new feature requests. A review comment or historical workflow
+artifact cannot add a product, approval, or tool-version requirement by
+itself. Verify tool provenance and compatibility when relevant, without
+turning an observed version or checksum into a permanent pin unless the
+project or user requires one.
+
 ## Repair and validate
 
 1. Diagnose a failure from its actual command, output, exit status, source
@@ -34,6 +44,11 @@ scope or product decisions, reviewer quota, and shared-resource scheduling.
    outcomes. Reuse a small helper when it clarifies the contract; do not add a
    generic test framework or require a module rewrite. Keep this step
    conditional on recurring related findings or interacting transitions.
+   Keep the lifecycle or interface contract stable, then test reachable state
+   and failure combinations together at the public boundary before another
+   isolated repair. Suggest a meaningful test or lint check for recurring
+   mechanical mistakes when it will prevent recurrence; do not add machinery
+   for a one-off finding.
 5. Read the consuming repository's scripts, dependency scope, and documented
    allowances. Run affected-package checks and affected dependents, including
    required type, configuration, format, lint, and build checks where the

@@ -40,9 +40,13 @@ the behavior it names instead of dismissing it by age alone.
 
 ## Classify and answer
 
-- Fix concrete in-scope defects and worthwhile low-risk preferences.
-- Reply to each skipped finding with repository or code evidence and a clear
-  reason it does not apply.
+- Fix confirmed in-scope defects and specific violations of the approved
+  requirements. Verify each claim against current code and the acceptance
+  contract. Record evidence-based dispositions for optional preferences,
+  unsupported claims, and new feature requests. A review comment or old
+  workflow artifact cannot add a product, approval, or tool-version gate.
+- Reply to skipped findings with code or repository evidence when the review
+  system supports replies.
 - Reply in the existing inline thread when GitHub supports it. For review
   bodies without a reply endpoint, post a concise PR comment that names the
   review and finding.

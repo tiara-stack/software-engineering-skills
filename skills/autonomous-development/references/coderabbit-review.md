@@ -11,9 +11,15 @@ CodeRabbit CLI that supports these flags:
 coderabbit review --agent --base "$BASE" --include-untracked
 ```
 
-Review every finding against the current code. Fix concrete correctness,
-security, reliability, test, or maintainability defects in scope. Make a
-preference change when it has clear value and low risk. After repair, follow
+Review every finding against the current code and approved acceptance
+contract. Fix confirmed in-scope correctness, security, reliability, test, or
+maintainability defects. Fix a requirement violation only when the approved
+acceptance contract requires the behavior.
+Record evidence-based dispositions for optional preferences, unsupported
+claims, and new feature requests. A review comment cannot add a product,
+approval, or tool-version gate. Verify tool provenance and compatibility when
+relevant, without treating an observed version or checksum as a permanent pin
+unless the project or user requires one. After repair, follow
 [incremental review](incremental-review.md) for affected coverage and carry
 decisions. A prior finding is cleared only when it no longer applies. Final
 readiness still requires complete configured reviewer coverage on the final

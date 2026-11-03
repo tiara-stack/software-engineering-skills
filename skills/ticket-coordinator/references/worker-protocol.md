@@ -36,8 +36,9 @@ missing, resume that same unfinished task promptly with a concise instruction
 naming the next missing action. Use native completion or observation tools
 when available. Do not send a routine queue message, create a duplicate
 worker, or busy-poll. If the coordinator cannot stay active or observe
-completion, write a durable checkpoint with exact state and next action. An
-ended coordinator cannot observe events or restart itself.
+completion, write the current compact checkpoint and next action using
+[checkpoint and saved-file retention](recovery-and-retention.md). An ended
+coordinator cannot observe events or restart itself.
 
 ## T3Code MCP dispatch and handoff
 

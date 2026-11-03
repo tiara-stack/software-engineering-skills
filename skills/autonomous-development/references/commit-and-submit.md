@@ -19,6 +19,13 @@ is outside the index.
 ## Commit coherent slices
 
 1. Finish one coherent feature slice and run its smallest relevant validation.
+   When the consuming workflow permits it, submit independently useful slices
+   as draft pull requests so CI and review can start before unrelated work
+   accumulates. Keep the approved task scope intact, make optional follow-up
+   work explicit, and keep defects that block existing acceptance in scope.
+   Follow configured stack, submission, hosted-review trigger, and quota rules.
+   Do not split or redefine an approved task without the user's direction, or
+   publish when the consuming project forbids it.
 2. Confirm the target branch is checked out and is not the default branch.
    Follow the local commit-message convention. Stage only the slice:
 
