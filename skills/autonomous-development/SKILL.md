@@ -53,8 +53,9 @@ from project configuration. `implement` applies the label only when one is
 configured and its submission workflow uses a pull request.
 
 The three `coordinated-*` routes are checkpoints for a ticket coordinator. Read
-[Coordinated mode](references/coordinated-mode.md) before using one. They never
-apply the merge label or mark the issue complete.
+[Coordinated mode](references/coordinated-mode.md) before starting one; it
+defines the required handoff delivery and backend-specific completion check.
+These routes never apply the merge label or mark the issue complete.
 
 ## Select local reviewers
 

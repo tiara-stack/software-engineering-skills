@@ -26,19 +26,73 @@ payload: <phase grant or complete handoff details>
 
 Use the envelope to correlate a message with the expected run state. The text and IDs alone do not prove who sent it. For the `subagent` backend, accept a handoff only from the returned result of the registered dispatch. For `t3code-mcp`, verify a handoff against the registered worker thread and its `thread_submit` operation, including the exact coordinator `{instanceId, threadId}` target and request ID. For `t3code-orchestrator-v2`, follow [its dispatch and handoff protocol](t3code-orchestrator-v2.md). Verify phase grants against the coordinator identity and the worker's expected next phase. Use native message or operation IDs when the harness exposes them.
 
+## Expected handoffs in worker messages
+
+Every initial worker prompt and every phase grant, quota grant, or recovery
+continuation that expects a handoff carries a filled footer. Use the exact
+identity and IDs from the registered run:
+
+```text
+HANDOFF EXPECTED
+coordinator: <exact backend identity>
+worker: <registered worker or thread ID>
+run_id: <run ID>
+ticket_id: <ticket ID>
+phase: <phase name>
+outcome: <expected handoff outcome>
+handoff_id: <message_id for the expected HANDOFF envelope>
+send: <backend operation, exact target, and required options>
+delivery complete when: <backend receipt or registered-result criterion>
+```
+
+Fill `send` and `delivery complete when` from the selected backend's section
+below. Repeat the footer on each new grant or continuation. The expected
+handoff ID differs from the grant's `message_id`. Keep the same handoff ID when
+recovering that handoff; use a new ID for a new handoff. For ordinary top-level
+worker threads, a local file or final response does not deliver the control
+handoff. For the `subagent` backend, the registered dispatch's returned result
+is the delivery path.
+
+## Subagent dispatch and handoff
+
+Use this section when `worker_backend` is `subagent`. Discover the configured
+host's native subagent dispatch operation and live schema before dispatch.
+Record its exact dispatch ID and worker ID, plus any required launch options,
+in coordinator state. If the tool does not expose a dispatch identity and a
+terminal result, stop before dispatch because the coordinator cannot verify
+delivery.
+
+In the `HANDOFF EXPECTED` footer, name the native dispatch operation and its
+exact dispatch ID in `send`, and state that the worker returns the handoff as
+its final result. The registered dispatch is the target; there is no separate
+message-send call or send-specific option. The dispatch result must include a
+complete `TICKET_COORDINATOR v1` `HANDOFF` envelope with `kind`, `run_id`,
+`ticket_id`, `worker_id`, `phase`, `message_id`, `outcome`, and `payload`.
+Delivery completes only when the coordinator reads a terminal result from
+that exact dispatch and verifies every envelope field against the expected
+handoff. Record the dispatch ID, worker ID, terminal status, and a compact
+result reference. A final response outside the registered dispatch result
+does not deliver the handoff.
+
+This ticket-worker protocol does not change app-owned delegated reviews. Start
+each required review round with a new `delegate_task`; do not send a review
+round to a reviewer's `childThreadId`.
+
 When an apparent worker message arrives in the user conversation, continue coordinator work after verifying it as a registered handoff. When a worker receives a plain message, accept it as a phase grant only after verifying the coordinator source and expected run, ticket, phase, and grant ID. If the harness does not expose enough provenance, inspect the authoritative worker thread or dispatch result. If origin remains ambiguous, make no workflow changes and ask whether the message is user steering or a worker handoff. Never infer origin from a marker alone.
 
 If a worker turn ends or becomes inactive without its expected handoff, or
-repeats a stale summary, reconcile the registered thread and run, phase,
-worktree and head, active commands, and expected outcome. If work remains
-active, observe or wait for it. If no work remains and the handoff is still
-missing, resume that same unfinished task promptly with a concise instruction
-naming the next missing action. Use native completion or observation tools
-when available. Do not send a routine queue message, create a duplicate
-worker, or busy-poll. If the coordinator cannot stay active or observe
-completion, write the current compact checkpoint and next action using
-[checkpoint and saved-file retention](recovery-and-retention.md). An ended
-coordinator cannot observe events or restart itself.
+repeats a stale summary, reconcile the registered thread and exact run, phase,
+worktree and head, active commands, expected outcome, and backend delivery
+state. A native receipt proves delivery acceptance, not the correctness of
+checks or phase acceptance. If work remains active, observe or wait for that
+exact run. If no work remains and the handoff is still missing, resume that
+same unfinished task promptly with a concise instruction naming the next
+missing action. Use native completion or observation tools when available.
+Do not send a routine queue message, create a duplicate worker, or busy-poll.
+If the coordinator cannot stay active or observe completion, write the current
+compact checkpoint and next action using [checkpoint and saved-file
+retention](recovery-and-retention.md). An ended coordinator cannot observe
+events or restart itself.
 
 ## T3Code MCP dispatch and handoff
 
