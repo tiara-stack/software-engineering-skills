@@ -25,9 +25,9 @@ project or user requires one.
    interfaces. Group equivalent call, import, alias, mutation, and execution
    forms into categories. Include meaningful negative controls where they
    separate intended behavior from accidental matches.
-3. Repair the category, not only the reported example. Check public behavior
-   against independent inventories or semantics-preserving variants when
-   available. Inspect shared analysis and consolidate inconsistent copies
+3. Repair the category that produced the reported example. Check public
+   behavior against independent inventories or semantics-preserving variants
+   when available. Inspect shared analysis and consolidate inconsistent copies
    when the defect crosses them. A broad rewrite is not required.
 4. When related findings recur across repair rounds or expose interacting
    lifecycle or deadline behavior, collect adjacent findings before another
@@ -62,6 +62,12 @@ project or user requires one.
    tested project capture path when available. Keep failed results as failed.
    Do not rerun an expensive successful command only to improve its report.
 
+When related mechanical defects recur, add a contract check at the stable
+owning boundary. In a consuming application, examples include deriving all
+ownership fields from one resolved object, enforcing identifier bounds at the
+parser, and proving staged source contains only owned paths. Keep those tests
+with the consuming implementation. This skill repo keeps the reusable guidance.
+
 ## Schedule independent reviews
 
 Treat the configured reviewer list as an ordering of prerequisites. Run every
@@ -72,6 +78,14 @@ reserved capacity. Reconcile shared pool usage and reserve all required
 capacity before starting the batch. If a shared pool is unavailable, wait or
 run only reviewers whose separate pools have capacity; never skip a reviewer
 or exceed a pool.
+
+Prepare independent axis inputs in parallel with unchanged-tool preflights
+when neither depends on the other's result. Start each authorized reviewer as
+soon as its own input, required preflight, and reserved capacity are ready.
+Keep configured prerequisites, including Open Code Review before CodeRabbit
+when the consuming project orders them that way. For a consumer that provides
+the versioned adapter, read [review preparation](../../agentic-review/references/review-preparation.md)
+for the bounded bundle and receipt schemas.
 
 Pin each invocation to its exact source and checkpoint. Record its unique task
 or invocation ID, native result or result reference, assigned scope, selected
