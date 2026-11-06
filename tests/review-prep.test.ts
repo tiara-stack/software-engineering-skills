@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -47,11 +47,19 @@ async function reviewPlan(root: string, overrides: {
   changePath?: string;
   previousDependenciesSha?: string;
   withSpec?: boolean;
-} = {}): Promise<{ inputPath: string; otherAxisMarker: string }> {
+} = {}): Promise<{
+  inputPath: string;
+  otherAxisMarker: string;
+  expectedComparisonSourceHash: string;
+  expectedRulesHash: string;
+}> {
   const otherAxisMarker = "SECURITY_AXIS_PRIVATE_BASELINE";
   const contract = await writeArtifact(root, "review-contract.md", "Report findings only. Keep each review isolated.\n");
   const rule = await writeArtifact(root, "rules/backend.md", "Use the repository's documented boundary rules.\n");
+  const mixedCaseRule = await writeArtifact(root, "rules/a-backend.md", "Keep rule identity ordering locale independent.\n");
   const code = await writeArtifact(root, "src/owned.ts", "export const owned = true;\n");
+  const upperCode = await writeArtifact(root, "src/B.ts", "export const upper = true;\n");
+  const lowerCode = await writeArtifact(root, "src/a.ts", "export const lower = true;\n");
   const delta = await writeArtifact(root, "captures/correctness.diff", "");
   const securityDelta = await writeArtifact(root, "captures/security.diff", "");
   const configuration = await writeArtifact(root, "profiles/correctness.json", "{\"id\":\"reviewer-a\"}\n");
@@ -81,9 +89,22 @@ async function reviewPlan(root: string, overrides: {
       ...(specification && specDelta ? { spec_conformance: { sha256: specDelta.sha256, changed_paths: [] } } : {}),
     },
   });
-  const sourcePaths = overrides.missingSourceFile ? [] : [code];
-  const expectedScopeHash = hash(JSON.stringify([{ path: "src/owned.ts", sha256: code.sha256 }]));
-  const rulesHash = hash(JSON.stringify([{ label: rule.label, sha256: rule.sha256 }]));
+  const sourceFiles = [code, upperCode, lowerCode];
+  const sourcePaths = overrides.missingSourceFile ? [] : sourceFiles;
+  const scopePaths = ["src/owned.ts", "src/B.ts", "src/a.ts"].sort();
+  const sourceFileRecords = sourceFiles
+    .map((file) => ({ path: file.label, sha256: file.sha256 }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const expectedScopeHash = hash(JSON.stringify(sourceFileRecords));
+  const expectedComparisonSourceHash = hash(JSON.stringify({ deleted_paths: [], source_files: sourceFileRecords }));
+  const rules = [rule, mixedCaseRule];
+  const rulesHash = hash(
+    JSON.stringify(
+      rules
+        .map((item) => ({ label: item.label, sha256: item.sha256 }))
+        .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0)),
+    ),
+  );
   const emptyHash = hash("[]");
   const priorIdentity = {
     source_scope_sha256: expectedScopeHash,
@@ -100,7 +121,7 @@ async function reviewPlan(root: string, overrides: {
     schema: "review-coverage/v1",
     coverage_id: "coverage-owned-api",
     head: PRIOR_HEAD,
-    paths: ["src/owned.ts"],
+    paths: scopePaths,
     coverage: ["owned API behavior"],
     identity: priorIdentity,
   });
@@ -120,14 +141,14 @@ async function reviewPlan(root: string, overrides: {
         review_contract: contract,
         configuration,
         scope: {
-          paths: ["src/owned.ts"],
+          paths: scopePaths,
           deleted_paths: [],
           changed_paths: overrides.changePath ? [overrides.changePath] : [],
           required_coverage: ["owned API behavior"],
           included_coverage: overrides.includedCoverage ?? ["owned API behavior"],
         },
         source_files: sourcePaths,
-        rules: [rule],
+        rules,
         requirements: [],
         specification_identity: specification ? [specification] : [],
         generated_inputs: [],
@@ -145,7 +166,7 @@ async function reviewPlan(root: string, overrides: {
           {
             coverage_id: "coverage-owned-api",
             head: PRIOR_HEAD,
-            paths: ["src/owned.ts"],
+            paths: scopePaths,
             coverage: ["owned API behavior"],
             identity: priorIdentity,
             record: priorRecord,
@@ -213,12 +234,17 @@ async function reviewPlan(root: string, overrides: {
     },
   };
   const planRef = await writeJson(root, "review-plan.json", plan);
-  return { inputPath: path.join(root, planRef.path), otherAxisMarker };
+  return {
+    inputPath: path.join(root, planRef.path),
+    otherAxisMarker,
+    expectedComparisonSourceHash,
+    expectedRulesHash: rulesHash,
+  };
 }
 
 test("bundle generation is deterministic and keeps reviewer axes isolated", async (t) => {
   const root = await fixtureDirectory(t);
-  const { inputPath, otherAxisMarker } = await reviewPlan(root);
+  const { inputPath, otherAxisMarker, expectedComparisonSourceHash, expectedRulesHash } = await reviewPlan(root);
   const first = path.join(root, "output-a");
   const second = path.join(root, "output-b");
   const firstResult = await prepareReviewBundle({ inputPath, outputDirectory: first, axis: "correctness_reliability" });
@@ -232,6 +258,11 @@ test("bundle generation is deterministic and keeps reviewer axes isolated", asyn
   assert.equal(firstPrompt, secondPrompt);
   assert.match(firstManifest, /"semantic_review_status": "not_evaluated"/u);
   assert.match(firstManifest, /"decision": "eligible_candidate"/u);
+  const manifest = JSON.parse(firstManifest) as {
+    comparison_identity: { source_scope_sha256: string; rules_sha256: string };
+  };
+  assert.equal(manifest.comparison_identity.source_scope_sha256, expectedComparisonSourceHash);
+  assert.equal(manifest.comparison_identity.rules_sha256, expectedRulesHash);
   assert.match(firstPrompt, /AR-fixture-001/u);
   assert.doesNotMatch(firstManifest, new RegExp(otherAxisMarker, "u"));
   assert.doesNotMatch(firstPrompt, new RegExp(otherAxisMarker, "u"));
@@ -516,6 +547,83 @@ test("native start receipts count each actual start ID once", async (t) => {
   assert.equal(fallbackOutput.unique_starts[0].invocation_id, "run-fixture-reviewer-a-1");
 });
 
+test("native start accounting accepts bounded receipts whose output exceeds the bundle manifest cap", async (t) => {
+  const root = await fixtureDirectory(t);
+  const nativeReceipt = await writeArtifact(root, "native/native-start.json", "{\"accepted\":true}\n");
+  const reviewerId = `reviewer-${"r".repeat(240)}`;
+  const model = `model-${"m".repeat(240)}`;
+  const pool = `pool-${"p".repeat(240)}`;
+  const starts = [];
+
+  for (let index = 0; index < 80; index += 1) {
+    const receipt = await writeJson(root, `starts/start-${index}.json`, {
+      schema: "review-native-start/v1",
+      native_start_id: `native-run-${index}`,
+      run_id: "run-fixture",
+      phase: "coordinated-review",
+      base: BASE,
+      head: HEAD,
+      axis: "correctness_reliability",
+      reviewer_id: reviewerId,
+      model,
+      pool_id: pool,
+      status: "started",
+      native_id_available: true,
+      native_receipt: nativeReceipt,
+    });
+    starts.push({ expected: { axis: "correctness_reliability", reviewer_id: reviewerId, model, pool_id: pool }, receipt });
+  }
+
+  const input = await writeJson(root, "starts.json", {
+    schema: "review-native-starts/v1",
+    run_id: "run-fixture",
+    phase: "coordinated-review",
+    base: BASE,
+    head: HEAD,
+    starts,
+  });
+  const output = await countNativeStarts({ inputPath: path.join(root, input.path), outputPath: path.join(root, "accounting.json") });
+  assert.equal(output.uniqueStarts, 80);
+  assert.ok((await stat(output.outputPath)).size > 64 * 1024);
+  assert.ok((await stat(output.outputPath)).size <= 8 * 1024 * 1024);
+});
+
+test("native start accounting rejects receipt artifacts beyond its documented byte budget", async (t) => {
+  const root = await fixtureDirectory(t);
+  const nativeReceipt = await writeArtifact(root, "native/native-start.json", "{\"accepted\":true}\n");
+  const receipt = await writeJson(root, "start.json", {
+    schema: "review-native-start/v1",
+    native_start_id: "native-run-1",
+    run_id: "run-fixture",
+    phase: "coordinated-review",
+    base: BASE,
+    head: HEAD,
+    axis: "correctness_reliability",
+    reviewer_id: "reviewer-a",
+    model: "model-a",
+    pool_id: "local-reviewer",
+    status: "started",
+    native_id_available: true,
+    native_receipt: { ...nativeReceipt, sections: ["x".repeat(1_100_000)] },
+  });
+  const input = await writeJson(root, "starts.json", {
+    schema: "review-native-starts/v1",
+    run_id: "run-fixture",
+    phase: "coordinated-review",
+    base: BASE,
+    head: HEAD,
+    starts: [{
+      expected: { axis: "correctness_reliability", reviewer_id: "reviewer-a", model: "model-a", pool_id: "local-reviewer" },
+      receipt,
+    }],
+  });
+
+  await assert.rejects(
+    countNativeStarts({ inputPath: path.join(root, input.path), outputPath: path.join(root, "accounting.json") }),
+    /1048576 byte total artifact limit/u,
+  );
+});
+
 test("timing merges overlap, excludes concurrency from wall time, and marks unknown intervals", async (t) => {
   assert.equal(summarizeTiming({ schema: "review-timing/v1", events: [] }).status, "no_recorded_intervals");
   const summary = summarizeTiming({
@@ -544,4 +652,26 @@ test("timing merges overlap, excludes concurrency from wall time, and marks unkn
   });
   const output = await buildTimingSummary({ inputPath: path.join(root, input.path), outputPath: path.join(root, "timing-summary.json") });
   assert.equal(output.summary.status, "partial_unknown_timestamps");
+});
+
+test("timing output accommodates all accepted unknown interval records", async (t) => {
+  const root = await fixtureDirectory(t);
+  const input = await writeJson(root, "many-unknown-timings.json", {
+    schema: "review-timing/v1",
+    events: Array.from({ length: 5000 }, (_, index) => ({
+      id: `event-${String(index).padStart(4, "0")}-${"x".repeat(32)}`,
+      stage: "review",
+      start_at: null,
+      end_at: null,
+    })),
+  });
+  assert.ok((await stat(path.join(root, input.path))).size < 1024 * 1024);
+  const output = await buildTimingSummary({
+    inputPath: path.join(root, input.path),
+    outputPath: path.join(root, "many-unknown-timings-summary.json"),
+  });
+  const outputBytes = (await stat(output.outputPath)).size;
+  assert.ok(outputBytes > 64 * 1024);
+  assert.ok(outputBytes <= 8 * 1024 * 1024);
+  assert.equal((output.summary.unknown_intervals as Array<unknown>).length, 5000);
 });

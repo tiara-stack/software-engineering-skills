@@ -7,6 +7,11 @@ packages. The helper reads named local files and writes only to an explicit new
 output path. It does not call reviewers, inspect remote PR state, send thread
 messages, change coordinator state or quota, or remove files.
 
+Each control JSON input is capped at 1 MiB. The bundle manifest is capped at
+64 KiB, reviewer input at 32 KiB, and grant, start-accounting, and timing JSON
+outputs at 8 MiB. `count-starts` also caps all referenced receipt artifact bytes
+combined at 1 MiB, including native receipt artifacts.
+
 The consumer supplies a thin adapter from its canonical capture and receipt
 files to the schemas below. Keep source capture receipts, accepted review
 reports, and coordinator decisions in their existing canonical locations. Put
@@ -151,10 +156,12 @@ readable evidence reference whose content records the impact rationale.
 The consuming adapter derives these records from the canonical completed
 review ledger. For a coverage row, `source_scope_sha256` is SHA-256 over the
 compact JSON array of `{path, sha256}` records for that exact scope, sorted by
-path. Use the helper's emitted comparison hashes for rules, configuration,
-specification, generated inputs, and dependencies. The helper checks that the
-supplied row matches its canonical record. It does not decide whether the
-reviewer accepted the scope or whether the impact rationale is sound.
+JavaScript code-unit order (`a < b`). The helper uses that same locale-independent
+ordering for artifact labels in comparison hashes. Use the helper's emitted
+comparison hashes for rules, configuration, specification, generated inputs,
+and dependencies. The helper checks that the supplied row matches its canonical
+record. It does not decide whether the reviewer accepted the scope or whether
+the impact rationale is sound.
 
 The coordinator manifest reports `eligible_candidate` or `review_required` for
 each row. A candidate is not a review result or a new-head pass. The coordinator

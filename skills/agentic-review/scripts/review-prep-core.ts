@@ -26,11 +26,13 @@ const MAX_INPUT_BYTES = 1024 * 1024;
 const MAX_JSON_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_ARTIFACT_BYTES = 256 * 1024 * 1024;
+const MAX_COUNT_START_ARTIFACT_BYTES = 1024 * 1024;
 const MAX_ARTIFACTS = 160;
 const MAX_FINDINGS = 80;
 const MAX_CARRY_ROWS = 160;
 const MAX_TIMING_EVENTS = 5000;
 const MAX_MANIFEST_BYTES = 64 * 1024;
+const MAX_JSON_OUTPUT_BYTES = 8 * 1024 * 1024;
 const MAX_REVIEWER_INPUT_BYTES = 32 * 1024;
 
 type JsonRecord = Record<string, unknown>;
@@ -49,6 +51,8 @@ type VerifiedArtifact = {
   bytes: number;
   sections?: Array<string>;
 };
+
+type ArtifactBudget = { bytes: number; count: number; maxBytes?: number };
 
 class ReviewPrepError extends Error {
   constructor(message: string) {
@@ -142,6 +146,8 @@ const digestJson = (value: unknown): string => sha256(JSON.stringify(canonicaliz
 
 const sortedUnique = (values: Array<string>): Array<string> => [...new Set(values)].sort();
 
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 const likelySecretPatterns = [
   /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/u,
   /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/u,
@@ -205,7 +211,7 @@ async function verifyArtifact(
   value: unknown,
   inputDirectory: string,
   label: string,
-  total: { bytes: number; count: number },
+  total: ArtifactBudget,
 ): Promise<VerifiedArtifact> {
   const ref = artifactRef(value, label);
   total.count += 1;
@@ -222,8 +228,9 @@ async function verifyArtifact(
     fail(`${label} exceeds the ${MAX_ARTIFACT_BYTES} byte artifact limit`);
   }
   total.bytes += Number(before.size);
-  if (total.bytes > MAX_TOTAL_ARTIFACT_BYTES) {
-    fail(`Review input exceeds the ${MAX_TOTAL_ARTIFACT_BYTES} byte total artifact limit`);
+  const byteLimit = total.maxBytes ?? MAX_TOTAL_ARTIFACT_BYTES;
+  if (total.bytes > byteLimit) {
+    fail(`Review input exceeds the ${byteLimit} byte total artifact limit`);
   }
 
   const hash = createHash("sha256");
@@ -262,7 +269,7 @@ async function readVerifiedJson(
   refValue: unknown,
   inputDirectory: string,
   label: string,
-  total: { bytes: number; count: number },
+  total: ArtifactBudget,
 ): Promise<{ artifact: VerifiedArtifact; json: JsonRecord }> {
   const artifact = await verifyArtifact(refValue, inputDirectory, label, total);
   if (artifact.bytes > MAX_JSON_ARTIFACT_BYTES) {
@@ -283,7 +290,7 @@ const verifiedList = async (
   value: unknown,
   inputDirectory: string,
   label: string,
-  total: { bytes: number; count: number },
+  total: ArtifactBudget,
 ): Promise<Array<VerifiedArtifact>> => {
   const refs = artifactList(value, label);
   return Promise.all(refs.map((ref, index) => verifyArtifact(ref, inputDirectory, `${label}[${index}]`, total)));
@@ -307,7 +314,7 @@ const validateAxisDelta = (
 
 const refManifest = (artifacts: Array<VerifiedArtifact>) =>
   [...artifacts]
-    .sort((a, b) => a.label.localeCompare(b.label) || a.path.localeCompare(b.path))
+    .sort((a, b) => byCodeUnit(a.label, b.label) || byCodeUnit(a.path, b.path))
     .map((item) => ({
       label: item.label,
       path: item.path,
@@ -320,7 +327,7 @@ const sourceScopeHash = (files: Array<VerifiedArtifact>, paths: Array<string>): 
   const selected = files
     .filter((file) => paths.includes(file.label))
     .map((file) => ({ path: file.label, sha256: file.sha256 }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+    .sort((a, b) => byCodeUnit(a.path, b.path));
   return digestJson(selected);
 };
 
@@ -346,7 +353,7 @@ function compareCarryRows(args: {
   deletedPaths: Array<string>;
   changedPaths: Array<string>;
   inputDirectory: string;
-  total: { bytes: number; count: number };
+  total: ArtifactBudget;
 }): Promise<Array<JsonRecord>> {
   const rows = asArray(args.rows, "prior_coverage");
   if (rows.length > MAX_CARRY_ROWS) fail(`prior_coverage exceeds the ${MAX_CARRY_ROWS} record limit`);
@@ -641,24 +648,24 @@ export async function prepareReviewBundle(args: {
     const evidence = await verifyArtifact(finding.evidence, inputDirectory, `prior finding ${id}.evidence`, total);
     priorFindings.push({ id, axis, status: "unresolved", evidence });
   }
-  priorFindings.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  priorFindings.sort((a, b) => byCodeUnit(String(a.id), String(b.id)));
 
   const comparisonIdentity: ComparisonIdentity = {
     source_scope_sha256: digestJson({
       source_files: sourceFiles
         .map((item) => ({ path: item.label, sha256: item.sha256 }))
-        .sort((a, b) => a.path.localeCompare(b.path)),
+        .sort((a, b) => byCodeUnit(a.path, b.path)),
       deleted_paths: deletedPaths,
     }),
-    rules_sha256: digestJson(rules.map(({ label, sha256: digest }) => ({ label, sha256: digest })).sort((a, b) => a.label.localeCompare(b.label))),
+    rules_sha256: digestJson(rules.map(({ label, sha256: digest }) => ({ label, sha256: digest })).sort((a, b) => byCodeUnit(a.label, b.label))),
     configuration_sha256: configuration.sha256,
     specification_sha256: digestJson(
       (axis === "spec_conformance" ? requirements : specificationIdentity)
         .map(({ label, sha256: digest }) => ({ label, sha256: digest }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+        .sort((a, b) => byCodeUnit(a.label, b.label)),
     ),
-    generated_inputs_sha256: digestJson(generatedInputs.map(({ label, sha256: digest }) => ({ label, sha256: digest })).sort((a, b) => a.label.localeCompare(b.label))),
-    dependencies_sha256: digestJson(dependencies.map(({ label, sha256: digest }) => ({ label, sha256: digest })).sort((a, b) => a.label.localeCompare(b.label))),
+    generated_inputs_sha256: digestJson(generatedInputs.map(({ label, sha256: digest }) => ({ label, sha256: digest })).sort((a, b) => byCodeUnit(a.label, b.label))),
+    dependencies_sha256: digestJson(dependencies.map(({ label, sha256: digest }) => ({ label, sha256: digest })).sort((a, b) => byCodeUnit(a.label, b.label))),
     reviewer_id: reviewerInfo.id,
     model: reviewerInfo.model,
     reasoning_effort: reviewerInfo.reasoningEffort,
@@ -676,7 +683,7 @@ export async function prepareReviewBundle(args: {
     inputDirectory,
     total,
   });
-  carryCandidates.sort((a, b) => String(a.coverage_id).localeCompare(String(b.coverage_id)));
+  carryCandidates.sort((a, b) => byCodeUnit(String(a.coverage_id), String(b.coverage_id)));
 
   const visibleArtifacts = {
     review_contract: contract,
@@ -892,7 +899,7 @@ export async function checkConditionalGrant(args: {
 
 async function writeJsonExclusive(outputPath: string, value: unknown): Promise<void> {
   const bytes = jsonBytes(value);
-  if (bytes.byteLength > MAX_MANIFEST_BYTES) fail(`Output exceeds the ${MAX_MANIFEST_BYTES} byte manifest limit`);
+  if (bytes.byteLength > MAX_JSON_OUTPUT_BYTES) fail(`Output exceeds the ${MAX_JSON_OUTPUT_BYTES} byte JSON output limit`);
   rejectLikelySecrets(bytes.toString("utf8"), "Output");
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, bytes, { flag: "wx" });
@@ -912,7 +919,7 @@ export async function countNativeStarts(args: {
   const starts = asArray(input.starts, "starts");
   if (starts.length > MAX_ARTIFACTS) fail(`starts exceeds the ${MAX_ARTIFACTS} receipt limit`);
   const receipts = new Map<string, JsonRecord>();
-  const total = { bytes: 0, count: 0 };
+  const total: ArtifactBudget = { bytes: 0, count: 0, maxBytes: MAX_COUNT_START_ARTIFACT_BYTES };
   let duplicateReceipts = 0;
 
   for (let index = 0; index < starts.length; index += 1) {
@@ -981,7 +988,7 @@ export async function countNativeStarts(args: {
   }
 
   const unique = [...receipts.values()].sort((a, b) =>
-    String(a.accounting_key).localeCompare(String(b.accounting_key)),
+    byCodeUnit(String(a.accounting_key), String(b.accounting_key)),
   );
   const output = {
     schema: "review-native-start-accounting/v1",
