@@ -9,6 +9,14 @@ Run only after a direct `$agentic-review` invocation or a call from an explicitl
 
 This skill reports findings only. Keep code, tests, Git branches, and pull requests unchanged. A parent workflow owns any fixes and follow-up runs.
 
+When the consuming project supplies a `review-plan/v1` adapter and the required
+Effect CLI runtime, use [review preparation](references/review-preparation.md)
+to build a bounded input for each axis. Give a reviewer only its own
+`reviewer-input.md` and readable axis artifacts. Keep the coordinator manifest
+out of reviewer context. Prepare independent inputs alongside unchanged-tool
+preflights; start each reviewer once its own prerequisites and reserved quota
+are ready.
+
 ## Review workflow
 
 1. Read the repository's agent instructions and relevant domain context. For each changed path, follow applicable ancestor or nested agent instruction files, such as `AGENTS.md`, `CLAUDE.md`, or repository-specific instruction files. Follow their pointers to relevant coding, framework, architecture, or test guidance. Separate implementation rules from workflow instructions such as validation commands or issue handling; this review does not run those workflows. Confirm the caller requested this review path.

@@ -1,6 +1,6 @@
 # Checkpoints and ledger
 
-Use Git objects and refs for reviewed snapshots, and plain text files under the worktree's Git directory for completed reports. Do not create a database, dependency graph, or helper CLI.
+Use Git objects and refs for reviewed snapshots, and plain text files under the worktree's Git directory for completed reports. Keep review state out of databases and generated dependency graphs. The bounded `review-prep` helper handles inputs and evidence only; it does not manage checkpoints, the ledger, reviewer dispatch, or completion state. See [review preparation](review-preparation.md).
 
 ## Identify review state
 

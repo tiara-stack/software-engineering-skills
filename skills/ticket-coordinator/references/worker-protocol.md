@@ -128,6 +128,30 @@ Commit and submit repairs through the consuming project's workflow and verify th
 
 When a reviewer needs shared quota, let that invocation end and report `WAIT_LOCAL_POOL` or `WAIT_HOSTED_POOL`; keep the admitted review phase and its repair state open. After the coordinator grants capacity, the same worker starts the reviewer again without another phase grant. The worker may continue in-scope repairs and validation that do not consume the unavailable quota. Pause the phase only for a phase transition or a `REVIEW_BLOCKED` scope/product decision.
 
+## Conditional grants for predictable phases
+
+When the next phase and its prerequisites are predictable, the coordinator may
+include conditions in the normal `PHASE_GRANT`. Record the exact source head
+and capture ID, every required prerequisite receipt ID, the quota pool,
+reservation ID, remaining invocation count, phase, and worker identity. Reserve
+real capacity in the existing shared quota state before sending the grant.
+Keep phase admission and the reservation with the coordinator.
+
+The worker advances only when the native grant receipt, current source
+identity, complete prerequisite receipt set, and remaining reservation match
+the recorded conditions. If a condition is missing or changed, stop at the
+phase boundary and ask the coordinator to reconcile it. The worker cannot
+create or refill a reservation. `check-grant` in
+[review preparation](../../agentic-review/references/review-preparation.md#check-a-conditional-grant)
+checks supplied receipts. It does not read live coordinator state or grant
+capacity.
+
+Capture one normalized `review-native-start/v1` record from each actual native
+review start. Use `count-starts` from the same reference to deduplicate accepted
+starts by native ID, or by a stable run-local invocation ID when the backend
+returns none. The coordinator applies those counts to its existing pool under
+the shared lock. The helper never changes quota state.
+
 ## Waiting for quota
 
 When a reviewer returns a quota error, the coordinator records the retry time or calculates the next eligible time from the configured rolling window and shared usage state. Keep the worker and review phase open. Continue other eligible tickets while capacity is unavailable.
