@@ -339,28 +339,32 @@ reviewTest("manifest size rejection reports exact UTF-8 and escaped JSON section
     const plan = JSON.parse(yield* readText(fixture.inputPath)) as {
       run_id: string;
       source: { capture_receipt: { path: string; sha256: string } };
-      reviewers: { spec_conformance: { dependencies: Array<{ label: string; path: string; sha256: string }> } };
+      reviewers: {
+        correctness_reliability: {
+          rules: Array<{ label: string; path: string; sha256: string }>;
+          dependencies: Array<{ label: string; path: string; sha256: string }>;
+          specification_identity: Array<{ label: string; path: string; sha256: string }>;
+        };
+      };
     };
     const capturePath = path.join(root, plan.source.capture_receipt.path);
     const capture = JSON.parse(yield* readText(capturePath)) as { run_id: string };
-    plan.run_id = `${'r"é😀'.repeat(17_000)}`;
+    plan.run_id = 'r"é😀'.repeat(1_000);
     capture.run_id = plan.run_id;
     const captureRef = yield* writeJson(root, plan.source.capture_receipt.path, capture);
     plan.source.capture_receipt.sha256 = captureRef.sha256;
-    const requirement = JSON.parse(yield* readText(fixture.inputPath)).reviewers.spec_conformance.requirements[0] as {
-      label: string;
-      path: string;
-      sha256: string;
-    };
-    // Equal-size sections exercise the documented code-unit tie-break order.
-    plan.reviewers.spec_conformance.dependencies = [requirement];
+    const sharedArtifact = plan.reviewers.correctness_reliability.rules[0];
+    // Offset the seven-byte property-name difference to exercise the code-unit tie-break.
+    plan.reviewers.correctness_reliability.rules = [{ ...sharedArtifact, label: `${sharedArtifact.label}xxxxxxx` }];
+    plan.reviewers.correctness_reliability.dependencies = [sharedArtifact];
+    plan.reviewers.correctness_reliability.specification_identity[0].label = `identity-${"x".repeat(100_000)}`;
     yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
 
     const error = yield* Effect.flip(
       prepareReviewBundle({
         inputPath: fixture.inputPath,
         outputDirectory: path.join(root, "manifest-too-large"),
-        axis: "spec_conformance",
+        axis: "correctness_reliability",
       }),
     );
     const details = (error as ReviewPrepError).details;
@@ -373,17 +377,18 @@ reviewTest("manifest size rejection reports exact UTF-8 and escaped JSON section
     expect(error.message).toContain(`${details?.actualBytes} bytes`);
     expect(error.message).toContain(`over by ${details?.overageBytes}`);
     expect(error.message).not.toContain(plan.run_id);
+    expect(error.message).not.toContain(plan.reviewers.correctness_reliability.specification_identity[0].label);
 
     const runIdContribution = details?.contributors.find((item) => item.section === "run_id");
     expect(runIdContribution?.bytes).toBe(Buffer.byteLength(`"run_id": ${JSON.stringify(plan.run_id)}`, "utf8"));
     expect(plan.run_id.length).toBeLessThan(runIdContribution!.bytes);
     const equalSections = details?.contributors.filter(
-      (item) => item.section === "reviewer_visible_artifacts.dependencies" || item.section === "reviewer_visible_artifacts.requirements",
+      (item) => item.section === "reviewer_visible_artifacts.dependencies" || item.section === "reviewer_visible_artifacts.rules",
     );
     expect(equalSections?.[0].bytes).toBe(equalSections?.[1].bytes);
     expect(equalSections?.map((item) => item.section)).toEqual([
       "reviewer_visible_artifacts.dependencies",
-      "reviewer_visible_artifacts.requirements",
+      "reviewer_visible_artifacts.rules",
     ]);
     for (let index = 1; index < details!.contributors.length; index += 1) {
       const previous = details!.contributors[index - 1];
@@ -392,6 +397,30 @@ reviewTest("manifest size rejection reports exact UTF-8 and escaped JSON section
         true,
       );
     }
+
+    const identityRef = plan.reviewers.correctness_reliability.specification_identity[0];
+    const exactLabel = identityRef.label.slice(0, identityRef.label.length - details!.overageBytes);
+    expect(exactLabel.length).toBeGreaterThan(0);
+    identityRef.label = exactLabel;
+    yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    const atLimit = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "manifest-at-limit"),
+      axis: "correctness_reliability",
+    });
+    expect(Buffer.byteLength(yield* readText(atLimit.manifestPath), "utf8")).toBe(64 * 1024);
+
+    identityRef.label = `${exactLabel}x`;
+    yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    const oneByteOver = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "manifest-one-byte-over"),
+        axis: "correctness_reliability",
+      }),
+    );
+    expect((oneByteOver as ReviewPrepError).details?.actualBytes).toBe(64 * 1024 + 1);
+    expect((oneByteOver as ReviewPrepError).details?.overageBytes).toBe(1);
   }),
 );
 
@@ -435,6 +464,21 @@ reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes a
     expect(error.message).toContain("keep every required artifact readable");
     expect(error.message).not.toContain(dependencies[0].label);
     expect(details?.contributors.map((item) => item.section)).toContain("formatting/separators");
+    for (let index = 1; index < details!.contributors.length; index += 1) {
+      const previous = details!.contributors[index - 1];
+      const current = details!.contributors[index];
+      expect(previous.bytes > current.bytes || (previous.bytes === current.bytes && previous.section < current.section)).toBe(
+        true,
+      );
+    }
+    const repeatedError = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "reviewer-input-too-large-repeat"),
+        axis: "correctness_reliability",
+      }),
+    );
+    expect((repeatedError as ReviewPrepError).details?.contributors).toEqual(details?.contributors);
 
     const rewriteDependencies = (padding: number, lastPadding = 0) => {
       const updated = dependencies.map((dependency, index) => ({
@@ -453,6 +497,18 @@ reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes a
       axis: "correctness_reliability",
     });
     expect(belowBoundary.reviewerInputBytes).toBeLessThanOrEqual(32 * 1024);
+    const renderedInput = yield* readText(belowBoundary.reviewerInputPath);
+    const reviewIdentityStart = renderedInput.indexOf("# Independent review input");
+    const reviewInstructionsStart = renderedInput.indexOf("Review only this axis in an isolated context", reviewIdentityStart);
+    expect(reviewIdentityStart).toBeGreaterThanOrEqual(0);
+    expect(reviewInstructionsStart).toBeGreaterThan(reviewIdentityStart);
+    const renderedReviewIdentityBytes = renderedInput
+      .slice(reviewIdentityStart, reviewInstructionsStart)
+      .split("\n")
+      .reduce((bytes, line) => bytes + Buffer.byteLength(line, "utf8"), 0);
+    expect(details?.contributors.find((item) => item.section === "review identity")?.bytes).toBe(
+      renderedReviewIdentityBytes,
+    );
 
     const exactPadding = 32 * 1024 - belowBoundary.reviewerInputBytes;
     yield* rewriteDependencies(boundaryPadding, exactPadding);
