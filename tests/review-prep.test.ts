@@ -437,12 +437,45 @@ reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes a
       };
     };
     const source = plan.reviewers.correctness_reliability.source_files[0];
-    const dependencies = Array.from({ length: 120 }, (_, index) => ({
-      ...source,
-      label: `dependency-${String(index).padStart(3, "0")}-${index === 0 ? '"é' : ""}${"x".repeat(40)}`,
-    }));
-    plan.reviewers.correctness_reliability.dependencies = dependencies;
-    yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    const makeDependencies = (count: number, padding: number, lastPadding = 0) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...source,
+        label: `dependency-${String(index).padStart(3, "0")}-${index === 0 ? '"é' : ""}${"x".repeat(padding)}${index === count - 1 ? "y".repeat(lastPadding) : ""}`,
+      }));
+    const writeDependencies = (dependencies: Array<{ label: string; path: string; sha256: string }>) => {
+      plan.reviewers.correctness_reliability.dependencies = dependencies;
+      return writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    };
+    yield* writeDependencies(makeDependencies(1, 0));
+    const oneDependencyBaseline = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-one-dependency-baseline"),
+      axis: "correctness_reliability",
+    });
+    yield* writeDependencies(makeDependencies(2, 0));
+    const twoDependencyBaseline = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-two-dependency-baseline"),
+      axis: "correctness_reliability",
+    });
+    const bytesPerDependency = twoDependencyBaseline.reviewerInputBytes - oneDependencyBaseline.reviewerInputBytes;
+    expect(bytesPerDependency).toBeGreaterThan(0);
+    const targetBaselineBytes = 32 * 1024 - 512;
+    const dependencyCount = Math.min(
+      140,
+      Math.floor((targetBaselineBytes - oneDependencyBaseline.reviewerInputBytes) / bytesPerDependency) + 1,
+    );
+    expect(dependencyCount).toBeGreaterThan(0);
+    yield* writeDependencies(makeDependencies(dependencyCount, 0));
+    const unpaddedBaseline = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-unpadded-baseline"),
+      axis: "correctness_reliability",
+    });
+    expect(unpaddedBaseline.reviewerInputBytes).toBeLessThanOrEqual(32 * 1024);
+    const initialPadding = Math.floor((32 * 1024 - unpaddedBaseline.reviewerInputBytes) / dependencyCount) + 1;
+    const dependencies = makeDependencies(dependencyCount, initialPadding);
+    yield* writeDependencies(dependencies);
 
     const error = yield* Effect.flip(
       prepareReviewBundle({
@@ -480,17 +513,9 @@ reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes a
     );
     expect((repeatedError as ReviewPrepError).details?.contributors).toEqual(details?.contributors);
 
-    const rewriteDependencies = (padding: number, lastPadding = 0) => {
-      const updated = dependencies.map((dependency, index) => ({
-        ...dependency,
-        label: `dependency-${String(index).padStart(3, "0")}-${index === 0 ? '"é' : ""}${"x".repeat(padding)}${index === dependencies.length - 1 ? "y".repeat(lastPadding) : ""}`,
-      }));
-      plan.reviewers.correctness_reliability.dependencies = updated;
-      return writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
-    };
-    const boundaryPadding = 40 - Math.ceil(details!.overageBytes / dependencies.length);
+    const boundaryPadding = initialPadding - Math.ceil(details!.overageBytes / dependencies.length);
     expect(boundaryPadding).toBeGreaterThanOrEqual(0);
-    yield* rewriteDependencies(boundaryPadding);
+    yield* writeDependencies(makeDependencies(dependencyCount, boundaryPadding));
     const belowBoundary = yield* prepareReviewBundle({
       inputPath: fixture.inputPath,
       outputDirectory: path.join(root, "reviewer-input-at-limit"),
@@ -511,7 +536,7 @@ reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes a
     );
 
     const exactPadding = 32 * 1024 - belowBoundary.reviewerInputBytes;
-    yield* rewriteDependencies(boundaryPadding, exactPadding);
+    yield* writeDependencies(makeDependencies(dependencyCount, boundaryPadding, exactPadding));
     const atBoundary = yield* prepareReviewBundle({
       inputPath: fixture.inputPath,
       outputDirectory: path.join(root, "reviewer-input-exact-limit"),
@@ -519,7 +544,7 @@ reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes a
     });
     expect(atBoundary.reviewerInputBytes).toBe(32 * 1024);
 
-    yield* rewriteDependencies(boundaryPadding, exactPadding + 1);
+    yield* writeDependencies(makeDependencies(dependencyCount, boundaryPadding, exactPadding + 1));
     const oneByteOver = yield* Effect.flip(
       prepareReviewBundle({
         inputPath: fixture.inputPath,
