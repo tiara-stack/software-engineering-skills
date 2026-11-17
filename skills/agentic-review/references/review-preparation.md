@@ -13,6 +13,22 @@ Each control JSON input is capped at 1 MiB. The bundle manifest is capped at
 outputs at 8 MiB. `count-starts` also caps all referenced receipt artifact bytes
 combined at 1 MiB, including native receipt artifacts.
 
+When a bundle exceeds either size limit, the helper reports the rendered UTF-8
+byte total, limit, overage, and every section's byte contribution and item
+count. JSON contributions include encoded key and value bytes; formatting and
+separators have their own row. Reviewer-input contributions come from the exact
+Markdown sections written to disk. Sections sort by descending byte size, then
+code-unit name order. The error message and its structured `details` contain
+section names and counts, never artifact contents.
+
+For example, a `reviewer_visible_artifacts.source_files` contribution of 41,200
+bytes across 92 records points to source-reference metadata as the main cost.
+Check the adapter for verbose labels or redundant metadata and keep the names
+that help reviewers identify files. Rerun `bundle` after the edit. A size error
+does not permit dropping required paths, coverage, findings, requirements, or
+any other evidence, and it never means review passed. Keep full evidence
+readable through the adapter's artifact references.
+
 The consumer supplies a thin adapter from its canonical capture and receipt
 files to the schemas below. Keep source capture receipts, accepted review
 reports, and coordinator decisions in their existing canonical locations. Put
