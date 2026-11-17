@@ -10,6 +10,7 @@ import {
   checkConditionalGrant,
   countNativeStarts,
   prepareReviewBundle,
+  ReviewPrepError,
   summarizeTiming,
 } from "../skills/agentic-review/scripts/review-prep-core";
 
@@ -328,6 +329,231 @@ reviewTest("bundle generation is deterministic and keeps reviewer axes isolated"
     expect(firstPrompt).not.toContain(otherAxisMarker);
     expect(firstPrompt).not.toMatch(/security_privacy/u);
     expect(firstResult.reviewerInputBytes).toBeLessThan(32 * 1024);
+  }),
+);
+
+reviewTest("manifest size rejection reports exact UTF-8 and escaped JSON section bytes", () =>
+  Effect.gen(function* () {
+    const root = yield* fixtureDirectory();
+    const fixture = yield* reviewPlan(root, { withSpec: true });
+    const plan = JSON.parse(yield* readText(fixture.inputPath)) as {
+      run_id: string;
+      source: { capture_receipt: { path: string; sha256: string } };
+      reviewers: {
+        correctness_reliability: {
+          rules: Array<{ label: string; path: string; sha256: string }>;
+          dependencies: Array<{ label: string; path: string; sha256: string }>;
+          specification_identity: Array<{ label: string; path: string; sha256: string }>;
+        };
+      };
+    };
+    const capturePath = path.join(root, plan.source.capture_receipt.path);
+    const capture = JSON.parse(yield* readText(capturePath)) as { run_id: string };
+    plan.run_id = 'r"é😀'.repeat(1_000);
+    capture.run_id = plan.run_id;
+    const captureRef = yield* writeJson(root, plan.source.capture_receipt.path, capture);
+    plan.source.capture_receipt.sha256 = captureRef.sha256;
+    const sharedArtifact = plan.reviewers.correctness_reliability.rules[0];
+    // Offset the seven-byte property-name difference to exercise the code-unit tie-break.
+    plan.reviewers.correctness_reliability.rules = [{ ...sharedArtifact, label: `${sharedArtifact.label}xxxxxxx` }];
+    plan.reviewers.correctness_reliability.dependencies = [sharedArtifact];
+    plan.reviewers.correctness_reliability.specification_identity[0].label = `identity-${"x".repeat(100_000)}`;
+    yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+
+    const error = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "manifest-too-large"),
+        axis: "correctness_reliability",
+      }),
+    );
+    const details = (error as ReviewPrepError).details;
+    expect(details).toBeDefined();
+    expect(details?.artifact).toBe("manifest");
+    expect(details?.actualBytes).toBeGreaterThan(64 * 1024);
+    expect(details?.limitBytes).toBe(64 * 1024);
+    expect(details?.overageBytes).toBe(details!.actualBytes - details!.limitBytes);
+    expect(details?.contributors.reduce((sum, item) => sum + item.bytes, 0)).toBe(details?.actualBytes);
+    expect(error.message).toContain(`${details?.actualBytes} bytes`);
+    expect(error.message).toContain(`over by ${details?.overageBytes}`);
+    expect(error.message).not.toContain(plan.run_id);
+    expect(error.message).not.toContain(plan.reviewers.correctness_reliability.specification_identity[0].label);
+
+    const runIdContribution = details?.contributors.find((item) => item.section === "run_id");
+    expect(runIdContribution?.bytes).toBe(Buffer.byteLength(`"run_id": ${JSON.stringify(plan.run_id)}`, "utf8"));
+    expect(plan.run_id.length).toBeLessThan(runIdContribution!.bytes);
+    const equalSections = details?.contributors.filter(
+      (item) => item.section === "reviewer_visible_artifacts.dependencies" || item.section === "reviewer_visible_artifacts.rules",
+    );
+    expect(equalSections?.[0].bytes).toBe(equalSections?.[1].bytes);
+    expect(equalSections?.map((item) => item.section)).toEqual([
+      "reviewer_visible_artifacts.dependencies",
+      "reviewer_visible_artifacts.rules",
+    ]);
+    for (let index = 1; index < details!.contributors.length; index += 1) {
+      const previous = details!.contributors[index - 1];
+      const current = details!.contributors[index];
+      expect(previous.bytes > current.bytes || (previous.bytes === current.bytes && previous.section < current.section)).toBe(
+        true,
+      );
+    }
+
+    const identityRef = plan.reviewers.correctness_reliability.specification_identity[0];
+    const exactLabel = identityRef.label.slice(0, identityRef.label.length - details!.overageBytes);
+    expect(exactLabel.length).toBeGreaterThan(0);
+    identityRef.label = exactLabel;
+    yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    const atLimit = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "manifest-at-limit"),
+      axis: "correctness_reliability",
+    });
+    expect(Buffer.byteLength(yield* readText(atLimit.manifestPath), "utf8")).toBe(64 * 1024);
+
+    identityRef.label = `${exactLabel}x`;
+    yield* writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    const oneByteOver = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "manifest-one-byte-over"),
+        axis: "correctness_reliability",
+      }),
+    );
+    expect((oneByteOver as ReviewPrepError).details?.actualBytes).toBe(64 * 1024 + 1);
+    expect((oneByteOver as ReviewPrepError).details?.overageBytes).toBe(1);
+  }),
+);
+
+reviewTest("reviewer input size rejection reports rendered UTF-8 section bytes and readable artifact counts", () =>
+  Effect.gen(function* () {
+    const root = yield* fixtureDirectory();
+    const fixture = yield* reviewPlan(root);
+    const plan = JSON.parse(yield* readText(fixture.inputPath)) as {
+      reviewers: {
+        correctness_reliability: {
+          source_files: Array<{ label: string; path: string; sha256: string }>;
+          dependencies: Array<{ label: string; path: string; sha256: string }>;
+        };
+      };
+    };
+    const source = plan.reviewers.correctness_reliability.source_files[0];
+    const makeDependencies = (count: number, padding: number, lastPadding = 0) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...source,
+        label: `dependency-${String(index).padStart(3, "0")}-${index === 0 ? '"é' : ""}${"x".repeat(padding)}${index === count - 1 ? "y".repeat(lastPadding) : ""}`,
+      }));
+    const writeDependencies = (dependencies: Array<{ label: string; path: string; sha256: string }>) => {
+      plan.reviewers.correctness_reliability.dependencies = dependencies;
+      return writeText(fixture.inputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    };
+    yield* writeDependencies(makeDependencies(1, 0));
+    const oneDependencyBaseline = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-one-dependency-baseline"),
+      axis: "correctness_reliability",
+    });
+    yield* writeDependencies(makeDependencies(2, 0));
+    const twoDependencyBaseline = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-two-dependency-baseline"),
+      axis: "correctness_reliability",
+    });
+    const bytesPerDependency = twoDependencyBaseline.reviewerInputBytes - oneDependencyBaseline.reviewerInputBytes;
+    expect(bytesPerDependency).toBeGreaterThan(0);
+    const targetBaselineBytes = 32 * 1024 - 512;
+    const dependencyCount = Math.min(
+      140,
+      Math.floor((targetBaselineBytes - oneDependencyBaseline.reviewerInputBytes) / bytesPerDependency) + 1,
+    );
+    expect(dependencyCount).toBeGreaterThan(0);
+    yield* writeDependencies(makeDependencies(dependencyCount, 0));
+    const unpaddedBaseline = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-unpadded-baseline"),
+      axis: "correctness_reliability",
+    });
+    expect(unpaddedBaseline.reviewerInputBytes).toBeLessThanOrEqual(32 * 1024);
+    const initialPadding = Math.floor((32 * 1024 - unpaddedBaseline.reviewerInputBytes) / dependencyCount) + 1;
+    const dependencies = makeDependencies(dependencyCount, initialPadding);
+    yield* writeDependencies(dependencies);
+
+    const error = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "reviewer-input-too-large"),
+        axis: "correctness_reliability",
+      }),
+    );
+    const details = (error as ReviewPrepError).details;
+    expect(details).toBeDefined();
+    expect(details?.artifact).toBe("reviewer input");
+    expect(details?.actualBytes).toBeGreaterThan(32 * 1024);
+    expect(details?.limitBytes).toBe(32 * 1024);
+    expect(details?.overageBytes).toBe(details!.actualBytes - details!.limitBytes);
+    expect(details?.contributors.reduce((sum, item) => sum + item.bytes, 0)).toBe(details?.actualBytes);
+    expect(details?.contributors.find((item) => item.section === "required artifact references")?.count).toBe(
+      dependencies.length + 7,
+    );
+    expect(error.message).toContain("keep every required artifact readable");
+    expect(error.message).not.toContain(dependencies[0].label);
+    expect(details?.contributors.map((item) => item.section)).toContain("formatting/separators");
+    for (let index = 1; index < details!.contributors.length; index += 1) {
+      const previous = details!.contributors[index - 1];
+      const current = details!.contributors[index];
+      expect(previous.bytes > current.bytes || (previous.bytes === current.bytes && previous.section < current.section)).toBe(
+        true,
+      );
+    }
+    const repeatedError = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "reviewer-input-too-large-repeat"),
+        axis: "correctness_reliability",
+      }),
+    );
+    expect((repeatedError as ReviewPrepError).details?.contributors).toEqual(details?.contributors);
+
+    const boundaryPadding = initialPadding - Math.ceil(details!.overageBytes / dependencies.length);
+    expect(boundaryPadding).toBeGreaterThanOrEqual(0);
+    yield* writeDependencies(makeDependencies(dependencyCount, boundaryPadding));
+    const belowBoundary = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-at-limit"),
+      axis: "correctness_reliability",
+    });
+    expect(belowBoundary.reviewerInputBytes).toBeLessThanOrEqual(32 * 1024);
+    const renderedInput = yield* readText(belowBoundary.reviewerInputPath);
+    const reviewIdentityStart = renderedInput.indexOf("# Independent review input");
+    const reviewInstructionsStart = renderedInput.indexOf("Review only this axis in an isolated context", reviewIdentityStart);
+    expect(reviewIdentityStart).toBeGreaterThanOrEqual(0);
+    expect(reviewInstructionsStart).toBeGreaterThan(reviewIdentityStart);
+    const renderedReviewIdentityBytes = renderedInput
+      .slice(reviewIdentityStart, reviewInstructionsStart)
+      .split("\n")
+      .reduce((bytes, line) => bytes + Buffer.byteLength(line, "utf8"), 0);
+    expect(details?.contributors.find((item) => item.section === "review identity")?.bytes).toBe(
+      renderedReviewIdentityBytes,
+    );
+
+    const exactPadding = 32 * 1024 - belowBoundary.reviewerInputBytes;
+    yield* writeDependencies(makeDependencies(dependencyCount, boundaryPadding, exactPadding));
+    const atBoundary = yield* prepareReviewBundle({
+      inputPath: fixture.inputPath,
+      outputDirectory: path.join(root, "reviewer-input-exact-limit"),
+      axis: "correctness_reliability",
+    });
+    expect(atBoundary.reviewerInputBytes).toBe(32 * 1024);
+
+    yield* writeDependencies(makeDependencies(dependencyCount, boundaryPadding, exactPadding + 1));
+    const oneByteOver = yield* Effect.flip(
+      prepareReviewBundle({
+        inputPath: fixture.inputPath,
+        outputDirectory: path.join(root, "reviewer-input-one-byte-over"),
+        axis: "correctness_reliability",
+      }),
+    );
+    expect((oneByteOver as ReviewPrepError).details?.actualBytes).toBe(32 * 1024 + 1);
+    expect((oneByteOver as ReviewPrepError).details?.overageBytes).toBe(1);
   }),
 );
 
